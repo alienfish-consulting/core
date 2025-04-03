@@ -1,4 +1,4 @@
-name: Validate Packages
+name: Lint, Test, and Build
 
 on:
   push:
@@ -101,6 +101,12 @@ jobs:
           fi
 
       - run: pnpm nx affected -t test --base=${{ steps.base.outputs.BASE_REF }} --head=HEAD
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          flags: unittests
+          fail_ci_if_error: true
 
   build:
     name: 🛠️ Build

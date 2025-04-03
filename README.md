@@ -1,9 +1,18 @@
-# AlienFishConsulting Core
+# <img src="https://images2.imgbox.com/d0/fe/1YGgwXjt_o.png" width="80" alt="Alien Fish Logo"> 
+## AlienFishConsulting: Core
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![CI](https://github.com/alienfish-consulting/core/actions/workflows/ci.yml/badge.svg?branch=development)
+![codecov](https://codecov.io/gh/alienfishconsulting/core/branch/main/graph/badge.svg)
+![Snyk](https://snyk.io/test/github/alienfishconsulting/core/badge.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
+![Issues](https://img.shields.io/github/issues/alienfish-consulting/core)
+![Stars](https://img.shields.io/github/stars/alienfish-consulting/core?style=social)
+
 
 A centralized collection of enterprise-ready, open source packages maintained by AlienFishConsulting. Our packages are designed with reliability, security, and professional standards in mind.
+
+---
 
 ## Packages
 
