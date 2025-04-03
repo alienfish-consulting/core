@@ -16,7 +16,8 @@
     "test": {
       "executor": "@nx/vite:test",
       "options": {
-        "config": "packages/core-context/vitest.config.ts"
+        "config": "packages/core-context/vitest.config.ts",
+        "coverage": true
       }
     },
     "lint": {
