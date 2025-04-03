@@ -22,13 +22,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/alienfishconsulting/core.git",
+    "url": "https://github.com/alienfish-consulting/core.git",
     "directory": "packages/core-context"
   },
   "bugs": {
-    "url": "https://github.com/alienfishconsulting/core/issues"
+    "url": "https://github.com/alienfish-consulting/core/issues"
   },
-  "homepage": "https://github.com/alienfishconsulting/core/tree/main/packages/context#readme",
+  "homepage": "https://github.com/alienfish-consulting/core/tree/main/packages/context#readme",
   "type": "module",
   "sideEffects": false,
   "engines": {
