@@ -51,6 +51,9 @@ jobs:
           echo "Releases must run on main. Current ref: ${{ github.ref }}"
           exit 1
 
+      - name:  🛠️ Build
+        run: pnpm ci:build
+
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
@@ -100,4 +103,4 @@ jobs:
             coverage/lcov.info
             release-assets/changelogs.zip
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}

@@ -4,12 +4,15 @@
   "license": "MIT",
   "scripts": {
     "prepare": "husky",
-    "build": "nx run-many -t build",
-    "test": "nx run-many -t test",
     "coverage:clean": "find . -type d -name coverage -exec rm -rf {} +",
-    "lint": "nx run-many -t lint",
+    "build": "nx affected -t build",
+    "test": "nx affected -t test",
+    "lint": "nx affected -t lint",
     "clean": "nx reset && rm -rf node_modules",
     "changeset": "changeset",
+    "ci:build": "nx run-many -t build",
+    "ci:test": "nx run-many -t test",
+    "ci:lint": "nx run-many -t lint",
     "ci:version": "changeset version",
     "ci:publish": "changeset publish",
     "commit": "cz"
