@@ -3,7 +3,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![CI](https://github.com/alienfish-consulting/core/actions/workflows/ci.yml/badge.svg?branch=development)
-![codecov](https://codecov.io/gh/alienfishconsulting/core/branch/main/graph/badge.svg)
+![codecov](https://codecov.io/gh/alienfish-consulting/core/branch/main/graph/badge.svg)
 ![Snyk](https://snyk.io/test/github/alienfishconsulting/core/badge.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![Issues](https://img.shields.io/github/issues/alienfish-consulting/core)
