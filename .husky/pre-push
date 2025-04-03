@@ -1,0 +1,8 @@
+BRANCH_NAME="$(git symbolic-ref --short HEAD)"
+
+if [ "$BRANCH_NAME" = "main" ] || [ "$BRANCH_NAME" = "development" ]; then
+  echo "✅ Skipping branch name validation for '$BRANCH_NAME'"
+else
+  echo "🔍 Validating branch name for '$BRANCH_NAME'"
+  pnpm validate-branch-name
+fi

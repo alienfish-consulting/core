@@ -1,0 +1,246 @@
+name: 📊 CodeCov Upload for Releases
+
+on:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
+        description: 'Token for uploading coverage to Codecov'
+      NX_CLOUD_ACCESS_TOKEN:
+        required: true
+        description: 'Nx Cloud access token for distributed task execution'
+    outputs:
+      coverage-artifact-name:
+        description: "Name of the uploaded coverage artifact"
+        value: ${{ jobs.upload-coverage.outputs.artifact-name }}
+
+env:
+  NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+
+jobs:
+  verify-branch:
+    name: ✅ Verify Main Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🔍 Verify main branch
+        id: verify-branch
+        run: |
+          CURRENT_BRANCH=$(git branch --show-current || git symbolic-ref --short HEAD || echo ${GITHUB_REF#refs/heads/})
+          echo "Current branch: $CURRENT_BRANCH"
+          
+          if [[ "$CURRENT_BRANCH" != "main" && "${GITHUB_REF#refs/heads/}" != "main" ]]; then
+            echo "::error::This workflow must run on the main branch only. Current branch: $CURRENT_BRANCH"
+            exit 1
+          fi
+          
+          echo "✓ Running on main branch. Proceeding with coverage generation."
+
+  setup:
+    name: 🧰 Setup
+    needs: verify-branch
+    uses: ./.github/workflows/setup.yml
+    with:
+      cache-version: "v1"
+      node-version: "22"
+      pnpm-version: "10.6.4"
+      sparse-checkout: false
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+
+  test-and-coverage:
+    name: 🧪 Generate Coverage Reports
+    needs: setup
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.package-coverage.outputs.artifact-name }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main # Explicitly checkout main branch
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.6.4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Restore dependency cache
+      - name: 📚 Restore dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+          key: ${{ needs.setup.outputs.pnpm-cache-key }}
+
+      # Restore Nx cache with fallback
+      - name: 💾 Restore Nx cache
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ needs.setup.outputs.nx-cache-key || format('{0}-node{1}-nx', 'v1', '22') }}
+          restore-keys: |
+            ${{ needs.setup.outputs.nx-cache-key || format('{0}-node{1}-nx', 'v1', '22') }}
+            v1-node22-nx-
+
+      # Run tests with coverage - make sure we run all tests, not just affected ones
+      - name: 🧪 Run tests with coverage
+        run: |
+          echo "🔍 Running all tests with coverage for release..."
+          pnpm nx run-many --target=test --all --codeCoverage --configuration=ci
+          echo "✅ Test suite completed"
+
+      # Merge the coverage reports from all packages
+      - name: 🔄 Merge package coverage reports
+        id: merge-coverage
+        run: |
+          echo "🔍 Locating coverage reports in packages directory..."
+          
+          # Create directory for combined coverage
+          mkdir -p combined-coverage
+          
+          # Find all lcov.info files in the packages directory
+          LCOV_COUNT=$(find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info' | wc -l)
+          echo "Found $LCOV_COUNT lcov.info files in packages"
+          
+          if [ $LCOV_COUNT -eq 0 ]; then
+            echo "::error::No lcov.info files found in packages directory. Tests may not have generated coverage reports."
+            exit 1
+          fi
+          
+          # Merge all the lcov.info files into one
+          find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info' -exec cat {} + > ./combined-coverage/lcov.info
+          
+          # Check if merged file has content
+          MERGED_SIZE=$(wc -c < ./combined-coverage/lcov.info)
+          if [ ! -s ./combined-coverage/lcov.info ] || [ $MERGED_SIZE -eq 0 ]; then
+            echo "::error::Merged coverage file is empty"
+            exit 1
+          fi
+          
+          echo "✅ Successfully merged $LCOV_COUNT package coverage files ($(du -h ./combined-coverage/lcov.info | cut -f1) total)"
+          echo "lcov_count=$LCOV_COUNT" >> $GITHUB_OUTPUT
+          echo "merged_size=$MERGED_SIZE" >> $GITHUB_OUTPUT
+
+      # Get git info for artifact naming
+      - name: 📋 Get Git info
+        id: git-info
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "Commit hash: $COMMIT_HASH"
+          echo "Timestamp: $TIMESTAMP"
+
+      # Package coverage for release artifacts
+      - name: 📦 Package coverage reports
+        id: package-coverage
+        run: |
+          # Use commit hash and timestamp for artifact naming
+          COMMIT_HASH="${{ steps.git-info.outputs.commit_hash }}"
+          TIMESTAMP="${{ steps.git-info.outputs.timestamp }}"
+          ARTIFACT_NAME="coverage-report-${COMMIT_HASH}-${TIMESTAMP}"
+          
+          # Create directory for artifacts
+          mkdir -p coverage-artifacts
+          cp ./combined-coverage/lcov.info coverage-artifacts/lcov.info
+          
+          # Try to generate HTML report if tools available
+          if command -v genhtml >/dev/null 2>&1; then
+            echo "📊 Generating HTML coverage report..."
+            genhtml ./combined-coverage/lcov.info -o coverage-artifacts/html --title "Coverage Report ${COMMIT_HASH}"
+            echo "✅ HTML coverage report generated"
+          else
+            mkdir -p coverage-artifacts/html
+            echo "<html><body><h1>Coverage Report ${COMMIT_HASH}</h1><p>HTML report unavailable. See lcov.info for raw data.</p></body></html>" > coverage-artifacts/html/index.html
+            echo "ℹ️ lcov tools not available, created placeholder HTML"
+          fi
+          
+          # Create a summary file with repo info
+          {
+            echo "# Coverage Report"
+            echo ""
+            echo "## Repository Information"
+            echo "- **Commit:** ${COMMIT_HASH}"
+            echo "- **Branch:** main"
+            echo "- **Date:** $(date)"
+            echo ""
+            echo "## Coverage Summary"
+            echo "- **Packages covered:** ${{ steps.merge-coverage.outputs.lcov_count }}"
+            echo "- **Report size:** $(du -h ./combined-coverage/lcov.info | cut -f1)"
+            echo ""
+          
+            # List the packages that were covered (up to 20)
+            echo "## Packages"
+            find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info' | sort | head -n 20 | while read file; do
+              # Extract package name from path
+              PACKAGE_PATH=$(dirname $(dirname "$file"))
+              PACKAGE_NAME=$(basename "$PACKAGE_PATH")
+              echo "- $PACKAGE_NAME"
+            done
+          
+            if [ ${{ steps.merge-coverage.outputs.lcov_count }} -gt 20 ]; then
+              echo "- ... and $(({{ steps.merge-coverage.outputs.lcov_count }} - 20)) more"
+            fi
+          } > coverage-artifacts/COVERAGE.md
+          
+          echo "artifact-name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+          echo "✅ Coverage artifacts prepared"
+
+      # Upload to Codecov
+      - name: 📤 Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./combined-coverage/lcov.info
+          flags: production,release
+          name: ${{ steps.git-info.outputs.commit_hash }}
+          fail_ci_if_error: true
+          verbose: true
+
+      # Upload coverage artifacts for releases
+      - name: 📤 Upload coverage artifact for release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package-coverage.outputs.artifact-name }}
+          path: coverage-artifacts/
+          retention-days: 90
+
+      # Create a summary for GitHub Actions
+      - name: 📊 Coverage Summary
+        run: |
+          {
+            echo "## 📊 Coverage Report Summary"
+            echo ""
+            echo "✅ Successfully processed ${{ steps.merge-coverage.outputs.lcov_count }} package coverage files"
+            echo ""
+            echo "### 📦 Artifacts"
+            echo "- **Artifact Name:** \`${{ steps.package-coverage.outputs.artifact-name }}\`"
+            echo "- **Coverage Size:** $(du -h ./combined-coverage/lcov.info | cut -f1)"
+            echo "- **Commit:** ${{ steps.git-info.outputs.commit_hash }}"
+            echo ""
+            echo "This report has been uploaded to Codecov and is available as a downloadable artifact."
+          } >> $GITHUB_STEP_SUMMARY
+
+  # Output job to expose the artifact name
+  upload-coverage:
+    name: 📊 Expose Coverage Artifact
+    needs: test-and-coverage
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ needs.test-and-coverage.outputs.artifact-name }}
+    steps:
+      - run: echo "Coverage artifact name is ${{ needs.test-and-coverage.outputs.artifact-name }}"

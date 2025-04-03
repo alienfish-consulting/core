@@ -1,0 +1,4 @@
+# Run lint, test, and build on affected projects in parallel
+echo "🔍 Running lint, test, and build on affected projects..."
+
+pnpm nx affected -t lint test build --parallel=3

@@ -1,0 +1,117 @@
+name: 🏗️ Build the Application
+
+on:
+  workflow_call:
+    inputs:
+      pnpm-cache-key:
+        description: "The generated pnpm cache key"
+        required: true
+        type: string
+      node-version:
+        description: "Node.js version"
+        required: false
+        default: "22"
+        type: string
+      pnpm-version:
+        description: "pnpm version"
+        required: false
+        default: "10.6.4"
+        type: string
+      run-affected:
+        description: "Run affected commands"
+        required: false
+        default: true
+        type: boolean
+      upload-coverage:
+        description: "Upload coverage to Codecov"
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      NX_CLOUD_ACCESS_TOKEN:
+        description: "Nx Cloud access token"
+        required: true
+    outputs:
+      summary:
+        description: "Build summary"
+        value: ${{ jobs.build.outputs.summary }}
+
+jobs:
+  build:
+    name:  🧪Test
+    runs-on: ubuntu-latest
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+    outputs:
+      summary: ${{ steps.test-summary.outputs.summary }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🧮 Calculate Nx Base and Head
+        if: ${{ inputs.run-affected == true }}
+        uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'main'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
+
+      - name: 📚 Restore dependency cache
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+          key: ${{ inputs.pnpm-cache-key }}
+
+      - name: 📥 Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          echo "🔄 Cache miss - Installing dependencies..."
+          pnpm install --frozen-lockfile
+          echo "✅ Dependencies installed successfully"     
+
+      # Run tests with the SHAs set by nx-set-shas
+      - name: 🧪 Run affected tests
+        if: ${{ inputs.run-affected == true }}
+        run: |
+          echo "🔍 Running tests on affected projects..."
+          echo "Using base: $NX_BASE"
+          echo "Using head: $NX_HEAD"
+
+          pnpm nx affected --target=test
+          echo "✅ Tests completed successfully"
+
+      # Runs all tests
+      - name: 🧪 Run all tests
+        if: ${{ inputs.run-affected == false }}
+        run: |
+          echo "🔍 Running tests on all projects..."
+          
+          pnpm nx run-many --target=test --parallel=3
+          echo "✅ Tests completed successfully"    
+
+      - name: 📊 Test Summary
+        if: always()
+        run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "summary=$GITHUB_STEP_SUMMARY" >> $GITHUB_STEP_SUMMARY

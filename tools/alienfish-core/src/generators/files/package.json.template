@@ -1,0 +1,65 @@
+{
+  "name": "@alienfishconsulting/<%= name %>",
+  "version": "1.0.0",
+  "description": "Add description here",
+  "author": {
+    "name": "Terry \"Lee\" Allen, Jr",
+    "email": "lee@alienfishconsulting.com",
+    "url": "https://github.com/alienfishconsulting"
+  },
+  "keywords": [
+    "boilerplate",
+    "alienfishconsulting-core",
+    "alienfishconsulting",
+    "functional",
+    "typescript",
+    "nodejs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alienfish-consulting/core.git",
+    "directory": "packages/<%= name %>"
+  },
+  "bugs": {
+    "url": "https://github.com/alienfish-consulting/core/issues"
+  },
+  "homepage": "https://github.com/alienfish-consulting/core/tree/main/packages/<%= name %>#readme",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run --coverage",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "license": "MIT"
+}

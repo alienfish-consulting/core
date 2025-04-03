@@ -1,0 +1,31 @@
+{
+  "name": "<%= name %>",
+  "root": "packages/<%= name %>t",
+  "sourceRoot": "packages/<%= name %>/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "tsc --project tsconfig.lib.json",
+          "tsup"],
+        "cwd": "packages/<%= name %>"
+      }
+    },
+    "test": {
+      "executor": "@nx/vite:test",
+      "options": {
+        "config": "packages/core-context/vitest.config.ts",
+        "coverage": true
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["packages/<%= name %>/**/*.ts"]
+      }
+    }
+  },
+  "tags": []
+}

@@ -1,0 +1,9 @@
+echo "📝 Validating commit message..."
+
+if npx --no -- commitlint --edit "$1"; then
+  echo "✅ Commit message passed linting."
+else
+  echo "❌ Commit message failed linting. Please follow conventional commit format."
+  echo "📘 Examples: 'feat: add login form', 'fix: correct input validation'"
+  exit 1
+fi

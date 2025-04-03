@@ -1,0 +1,133 @@
+name: 🏗️ Build the Application
+
+on:
+  workflow_call:
+    inputs:
+      pnpm-cache-key:
+        description: "The generated pnpm cache key"
+        required: true
+        type: string
+      node-version:
+        description: "Node.js version"
+        required: false
+        default: "22"
+        type: string
+      pnpm-version:
+        description: "pnpm version"
+        required: false
+        default: "10.6.4"
+        type: string
+    secrets:
+      NX_CLOUD_ACCESS_TOKEN:
+        description: "Nx Cloud access token"
+        required: true
+    outputs:
+      build-summary:
+        description: "Build summary"
+        value: ${{ jobs.build.outputs.build-summary }}
+
+jobs:
+  build:
+    name: 🏗️ Build
+    runs-on: ubuntu-latest
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+    outputs:
+      build-summary: ${{ steps.build-summary.outputs.build-summary }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🧮 Calculate Nx Base and Head
+        uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'main'
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
+
+      - name: 📚 Restore dependency cache
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+          key: ${{ inputs.pnpm-cache-key }}
+
+      - name: 📥 Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          echo "🔄 Cache miss - Installing dependencies..."
+          pnpm install --frozen-lockfile
+          echo "✅ Dependencies installed successfully"     
+
+      - name: Create build cache key
+        id: build-cache-key
+        run: echo "build-cache-key=build-${{ inputs.cache-version }}-node-${{ inputs.node-version }}-pnpm${{ inputs.pnpm-version }}-${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: 💾 Cache build artifacts
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: |
+            dist
+            */*/dist
+          key: ${{ steps.build-cache-key.outputs.build-cache-key }}
+
+      - name: 🏗️ Build affected projects
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        run: |
+          echo "🔍 Building affected projects..."
+          echo "Using base: $NX_BASE"
+          echo "Using head: $NX_HEAD"
+
+          pnpm nx affected --target=build --head=${{ env.NX_HEAD }} --base=${{ env.NX_BASE }} --parallel=3
+          echo "✅ Build completed successfully"
+
+      - name: 📤 Upload build artifacts
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-node-${{ inputs.node-version }}-pnpm-${{ inputs.pnpm-version }}-${{ github.sha }}
+          path: |
+            dist
+            */*/dist
+          retention-days: 3
+
+      - name: 📊 Generate Build Summary
+        id: build-summary
+        run: |
+          echo "BUILD_SUMMARY<<EOF" >> $GITHUB_ENV
+          echo "## 🏗️ Build Results" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "✅ Build completed successfully" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "### 📦 Build Artifacts" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "| Directory | Size |" >> $GITHUB_ENV
+          echo "| --- | --- |" >> $GITHUB_ENV
+          
+          find . -type d -name "dist" | while read dir; do
+            SIZE=$(du -sh "$dir" | cut -f1)
+            echo "| \`$dir\` | $SIZE |" >> $GITHUB_ENV
+          done
+          
+          echo "" >> $GITHUB_ENV
+          echo "Artifacts are available for download from this workflow run." >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: 📝 Output Build Summary
+        run: |
+          echo "${{ env.BUILD_SUMMARY }}" >> $GITHUB_STEP_SUMMARY
+          echo "build-summary=${{ env.BUILD_SUMMARY }}" >> $GITHUB_OUTPUT

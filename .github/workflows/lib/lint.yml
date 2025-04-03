@@ -1,0 +1,115 @@
+name: 🧹 Lint
+
+on:
+  workflow_call:
+    inputs:
+      pnpm-cache-key:
+        description: "The generated pnpm cache key"
+        required: true
+        type: string
+      node-version:
+        description: "Node.js version"
+        required: false
+        default: "22"
+        type: string
+      pnpm-version:
+        description: "pnpm version"
+        required: false
+        default: "10.6.4"
+        type: string
+    secrets:
+      NX_CLOUD_ACCESS_TOKEN:
+        description: "Nx Cloud access token"
+        required: true
+    outputs:
+      lint-summary:
+        description: "Lint summary"
+        value: ${{ jobs.lint.outputs.lint-summary }}
+
+jobs:
+  lint:
+    name: 🧹 Lint
+    runs-on: ubuntu-latest
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+    outputs:
+      lint-summary: ${{ steps.lint-summary.outputs.lint-summary }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Important: Need full history
+
+      - name: 🧮 Calculate Nx Base and Head
+        uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: 'main'
+
+      - name: 🛠️ Setup Environment
+        run: |
+          echo "::group::📦 Setup pnpm"
+          npm install -g pnpm@${{ inputs.pnpm-version }}
+          echo "::endgroup::"
+          
+          echo "::group::🟢 Setup Node.js"
+          NODE_VERSION=${{ inputs.node-version }}
+          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          nvm install $NODE_VERSION
+          nvm use $NODE_VERSION
+          echo "::endgroup::"
+
+      # Restore dependency cache
+      - name: 📚 Restore dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+          key: ${{ inputs.pnpm-cache-key }}
+
+      # Install dependencies if cache miss
+      - name: 📥 Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      # Run lint with the SHAs set by nx-set-shas
+      - name: 🧹 Run linting
+        id: run-lint
+        run: |
+          echo "🔍 Running lint on affected projects..."
+          echo "Using base: $NX_BASE"
+          echo "Using head: $NX_HEAD"
+
+          pnpm nx affected --target=lint --head=${{ env.NX_HEAD }} --base=${{ env.NX_BASE }} --parallel=3 --output-style=stream > lint_output.txt
+          lint_exit_code=$?
+          echo "✅ Lint completed with exit code: $lint_exit_code"
+          echo "lint_exit_code=$lint_exit_code" >> $GITHUB_OUTPUT
+
+      - name: 📊 Generate Lint Summary
+        id: lint-summary
+        run: |
+          echo "LINT_SUMMARY<<EOF" >> $GITHUB_ENV
+          echo "## 🧹 Lint Results" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          if [ "${{ steps.run-lint.outputs.lint_exit_code }}" == "0" ]; then
+            echo "✅ Lint passed successfully" >> $GITHUB_ENV
+          else
+            echo "❌ Lint failed" >> $GITHUB_ENV
+            echo "" >> $GITHUB_ENV
+            echo "### Lint Output" >> $GITHUB_ENV
+            echo "\`\`\`" >> $GITHUB_ENV
+            cat lint_output.txt >> $GITHUB_ENV
+            echo "\`\`\`" >> $GITHUB_ENV
+          fi
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: 📝 Output Lint Summary
+        run: |
+          echo "${{ env.LINT_SUMMARY }}" >> $GITHUB_STEP_SUMMARY
+          echo "lint-summary=${{ env.LINT_SUMMARY }}" >> $GITHUB_OUTPUT
+
+      - name: 🚨 Check Lint Status
+        if: steps.run-lint.outputs.lint_exit_code != 0
+        run: exit 1

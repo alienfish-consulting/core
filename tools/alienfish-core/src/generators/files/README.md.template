@@ -1,0 +1,79 @@
+# @alienfishconsulting/<%= name %>
+
+[![npm version](https://img.shields.io/npm/v/@alienfishconsulting/core-context.svg)](https://www.npmjs.com/package/@alienfishconsulting/core-context)
+[![License](https://img.shields.io/npm/l/@alienfishconsulting/core-context.svg)](./LICENSE)
+![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
+
+![CI](https://github.com/alienfish-consulting/core/actions/workflows/ci.yml/badge.svg?branch=development)
+![codecov](https://codecov.io/gh/alienfish-consulting/core/branch/main/graph/badge.svg)
+
+> [Add description here]
+
+---
+
+## ✨ Features
+
+- [Add features here]
+
+---
+
+## 📦 Installation
+
+```bash
+  pnpm add @alienfishconsulting/<%= name %>
+```
+
+Requires Node.js ≥18.
+
+
+## 🚀 Quick Start
+
+```ts
+// Add quick start details
+```
+
+
+## 🔧 API Overview
+
+| Function                             | Description                                      |
+|--------------------------------------|--------------------------------------------------|
+| `exampleFunction()`                  | 	Example description                             |
+| `exampleFunction()`                  | 	Example description                             |
+
+## ✅ Best Practices
+
+- Add best practices
+
+## 🧪 Testing
+This package is managed with Nx and uses Vitest for testing.
+
+```bash
+pnpm nx test <%= name %>
+```
+
+- ✅ 80% coverage required
+
+- 🎯 100% coverage target
+
+- CI will fail if coverage is insufficient
+
+## 🛠 Project Structure
+```bash
+  <%= name %>/
+  ├── src/
+  │   ├── index.ts        # Entry point for the package
+  │   ├── types.ts        # TypeScript types
+  │   ├── example1.ts     # Description
+  │   ├── example2.ts     # Description
+  │   └── example3.ts     # Description
+```
+
+## 🧩 Related Projects
+This package is part of the @alienfishconsulting/core monorepo — a collection of modular, enterprise-grade TypeScript utilities.
+
+# 📄 License
+
+MIT 
+
+© Terry "Lee" Allen, Jr
+

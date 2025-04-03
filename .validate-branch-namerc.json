@@ -1,0 +1,4 @@
+{
+  "pattern": "^(feature|fix|docs|style|refactor|test|chore)/.+$",
+  "errorMsg": "Branch name does not follow the conventional commit format. Expected format: <type>/<description>"
+}
