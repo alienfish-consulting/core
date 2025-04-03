@@ -1,0 +1,25 @@
+{
+  "changesets": [
+    {
+      "releases": [
+        {
+          "name": "@alienfishconsulting/core-context",
+          "type": "patch"
+        }
+      ],
+      "summary": "Updated the README.md file",
+      "id": "cuddly-yaks-worry"
+    }
+  ],
+  "releases": [
+    {
+      "name": "@alienfishconsulting/core-context",
+      "type": "patch",
+      "oldVersion": "1.0.2",
+      "changesets": [
+        "cuddly-yaks-worry"
+      ],
+      "newVersion": "1.0.3"
+    }
+  ]
+}
