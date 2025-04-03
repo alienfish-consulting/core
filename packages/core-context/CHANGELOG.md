@@ -1,5 +1,11 @@
 # @alienfishconsulting/core-context
 
+## 1.0.3
+
+### Patch Changes
+
+- 0e02b25: Updated the README.md file
+
 ## 1.0.2
 
 ### Patch Changes
