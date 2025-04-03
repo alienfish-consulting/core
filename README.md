@@ -14,7 +14,7 @@
 ## Generate a library
 
 ```sh
-npx nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
+pnpm nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
 ```
 
 ## Run tasks
@@ -22,13 +22,13 @@ npx nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
 To build the library use:
 
 ```sh
-npx nx build pkg1
+pnpm nx build pkg1
 ```
 
 To run any task with Nx use:
 
 ```sh
-npx nx <target> <project-name>
+pnpm nx <target> <project-name>
 ```
 
 These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
@@ -40,7 +40,7 @@ These targets are either [inferred automatically](https://nx.dev/concepts/inferr
 To version and release the library use
 
 ```
-npx nx release
+pnpm nx release
 ```
 
 Pass `--dry-run` to see what would happen without actually releasing the library.
@@ -54,13 +54,13 @@ Nx automatically updates TypeScript [project references](https://www.typescriptl
 To manually trigger the process to sync the project graph dependencies information to the TypeScript project references, run the following command:
 
 ```sh
-npx nx sync
+pnpm nx sync
 ```
 
 You can enforce that the TypeScript project references are always in the correct state when running in CI by adding a step to your CI job configuration that runs the following command:
 
 ```sh
-npx nx sync:check
+pnpm nx sync:check
 ```
 
 [Learn more about nx sync](https://nx.dev/reference/nx-commands#sync)

@@ -1,0 +1,70 @@
+{
+  "name": "@alienfishconsulting/core-context",
+  "version": "1.0.0",
+  "description": "Strongly typed, functional AsyncLocalStorage wrapper with context propagation for Node.js and Express apps",
+  "author": {
+    "name": "Terry \"Lee\" Allen, Jr",
+    "email": "lee@alienfishconsulting.com",
+    "url": "https://github.com/alienfishconsulting"
+  },
+  "keywords": [
+    "async-local-storage",
+    "async-hooks",
+    "nodejs",
+    "typescript",
+    "context",
+    "express",
+    "request-context",
+    "functional"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alienfishconsulting/core.git",
+    "directory": "packages/core-context"
+  },
+  "bugs": {
+    "url": "https://github.com/alienfishconsulting/core/issues"
+  },
+  "homepage": "https://github.com/alienfishconsulting/core/tree/main/packages/context#readme",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@paralleldrive/cuid2": "^2.2.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  },
+  "license": "MIT"
+}
