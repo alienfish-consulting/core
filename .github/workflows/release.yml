@@ -54,6 +54,12 @@ jobs:
       - name:  🛠️ Build
         run: pnpm ci:build
 
+      - name: 🕵️ Check for pending changesets
+        id: changesets
+        run: |
+          pnpm changeset status --output .changeset/status.json
+          echo "hasChangesets=$(jq '.releases | length > 0' .changeset/status.json)" >> "$GITHUB_OUTPUT"
+
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
