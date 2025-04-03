@@ -55,7 +55,7 @@ jobs:
         run: pnpm ci:build
 
       - name: 🕵️ Check for pending changesets
-        id: changesets
+        id: generate-changeset-status
         run: |
           pnpm changeset status --output .changeset/status.json
           echo "hasChangesets=$(jq '.releases | length > 0' .changeset/status.json)" >> "$GITHUB_OUTPUT"
