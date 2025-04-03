@@ -10,8 +10,8 @@
     "lint": "nx run-many -t lint",
     "clean": "nx reset && rm -rf node_modules",
     "changeset": "changeset",
-    "version": "changeset version",
-    "release": "changeset publish",
+    "ci:version": "changeset version",
+    "ci:publish": "changeset publish",
     "commit": "cz"
   },
   "private": true,
