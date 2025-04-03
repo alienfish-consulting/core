@@ -1,22 +1,135 @@
-name: CI
+name: Validate Packages
+
 on:
   push:
-    branches: [main,development]
+    branches: [main, development]
   pull_request:
-    branches: [main,development]
+    branches: [main, development]
+
 jobs:
-  test:
+  lint:
+    name: 🧹 Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v2
         with:
           version: 10.6.4
-      - uses: actions/setup-node@v3
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'pnpm'
+
+      - name: ♻️ Restore pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
       - run: pnpm install
-      - run: pnpm nx run-many -t lint
-      - run: pnpm nx run-many -t test
-      - run: pnpm nx run-many -t build
+
+      - name: 🧠 Determine affected base
+        id: base
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "BASE_REF=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "BASE_REF=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: pnpm nx affected -t lint --base=${{ steps.base.outputs.BASE_REF }} --head=HEAD
+
+  test:
+    name: 🧪 Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 20]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10.6.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'pnpm'
+
+      - name: ♻️ Restore pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - run: pnpm install
+
+      - name: 🧠 Determine affected base
+        id: base
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "BASE_REF=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "BASE_REF=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: pnpm nx affected -t test --base=${{ steps.base.outputs.BASE_REF }} --head=HEAD
+
+  build:
+    name: 🛠️ Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10.6.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'pnpm'
+
+      - name: ♻️ Restore pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - run: pnpm install
+
+      - name: 🧠 Determine affected base
+        id: base
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "BASE_REF=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "BASE_REF=origin/main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: pnpm nx affected -t build --base=${{ steps.base.outputs.BASE_REF }} --head=HEAD
+
+  validate:
+    name: ✅ Validate All
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    steps:
+      - name: Fail if any job failed
+        if: always()
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" || \
+                "${{ needs.test.result }}" != "success" || \
+                "${{ needs.build.result }}" != "success" ]]; then
+            echo "❌ One or more jobs failed"
+            exit 1
+          fi
+          echo "✅ All validation jobs passed"
