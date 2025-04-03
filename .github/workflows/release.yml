@@ -30,7 +30,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
@@ -51,29 +51,15 @@ jobs:
           echo "Releases must run on main. Current ref: ${{ github.ref }}"
           exit 1
 
-      - name: 🕵️ Check for pending changesets
+      - name: Create Release Pull Request or Publish to npm
         id: changesets
-        run: |
-          pnpm changeset status --output .changeset/status.json
-          echo "hasChangesets=$(jq '.releases | length > 0' .changeset/status.json)" >> "$GITHUB_OUTPUT"
-
-      - name: 🧹 Lint
-        if: steps.changesets.outputs.hasChangesets == 'true'
-        run: pnpm nx run-many -t lint --all
-
-      - name: 🧪 Test
-        if: steps.changesets.outputs.hasChangesets == 'true'
-        run: pnpm nx run-many -t test --all
-
-      - name: 🛠️ Build
-        if: steps.changesets.outputs.hasChangesets == 'true'
-        run: pnpm nx run-many -t build --all
-
-      - name: 🚀 Publish to npm
-        if: steps.changesets.outputs.hasChangesets == 'true'
-        run: pnpm release
+        uses: changesets/action@v1
+        with:
+          version: pnpm version
+          publish: pnpm release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: 📝 Generate GitHub Release Notes
         if: steps.changesets.outputs.hasChangesets == 'true'

@@ -3,16 +3,16 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
+    "prepare": "husky",
     "build": "nx run-many -t build",
-    "commit": "cz",
     "test": "nx run-many -t test",
     "coverage:clean": "find . -type d -name coverage -exec rm -rf {} +",
     "lint": "nx run-many -t lint",
     "clean": "nx reset && rm -rf node_modules",
     "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "nx run-many -t build && changeset publish",
-    "prepare": "husky"
+    "version": "changeset version",
+    "release": "changeset publish",
+    "commit": "cz"
   },
   "private": true,
   "devDependencies": {
