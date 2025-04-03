@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [18, 20]
+        node: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,13 +100,29 @@ jobs:
             echo "BASE_REF=HEAD~1" >> "$GITHUB_OUTPUT"
           fi
 
-      - run: pnpm nx affected -t test --base=${{ steps.base.outputs.BASE_REF }} --head=HEAD
+      - run: pnpm nx run-many -t test --base=${{ steps.base.outputs.BASE_REF }} --head=HEAD
 
-      - name: Upload coverage to Codecov
+      - name: Upload package coverage to Codecov
+        run: |
+          for file in $(find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info'); do
+            pkg=$(echo $file | sed -E 's|.*/packages/([^/]+)/coverage/lcov.info|\1|')
+            echo "Uploading coverage for $pkg"
+            npx codecov -f "$file" -F "$pkg" -n "$pkg" -t ${{ secrets.CODECOV_TOKEN }}
+          done
+
+      - name: Merge all coverage
+        run: |
+          mkdir -p coverage
+          find . -type f -name 'lcov.info' -path '*/coverage/lcov.info' -exec cat {} + > ./coverage/lcov.info
+
+      - name: Upload combined coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          flags: unittests
-          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: total
+          name: total
+          fail_ci_if_error: false
 
   build:
     name: 🛠️ Build
