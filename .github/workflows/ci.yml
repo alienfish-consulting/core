@@ -102,13 +102,17 @@ jobs:
 
       - run: pnpm nx run-many -t test --base=${{ steps.base.outputs.BASE_REF }} --head=HEAD
 
-      - name: Upload package coverage to Codecov
+      - name: Upload per-package coverage to Codecov
         run: |
+          curl -Os https://uploader.codecov.io/latest/linux/codecov
+          chmod +x codecov
+
           for file in $(find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info'); do
             pkg=$(echo $file | sed -E 's|.*/packages/([^/]+)/coverage/lcov.info|\1|')
             echo "Uploading coverage for $pkg"
-            npx codecov -f "$file" -F "$pkg" -n "$pkg" -t ${{ secrets.CODECOV_TOKEN }}
+            ./codecov --file "$file" --flag "$pkg" --name "$pkg" --token "${{ secrets.CODECOV_TOKEN }}"
           done
+      
 
       - name: Merge all coverage
         run: |
@@ -122,7 +126,7 @@ jobs:
           files: ./coverage/lcov.info
           flags: total
           name: total
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   build:
     name: 🛠️ Build
