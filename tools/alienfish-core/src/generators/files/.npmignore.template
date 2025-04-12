@@ -1,0 +1,7 @@
+src/
+tests/
+*.test.*
+*.spec.*
+tsconfig.*
+.eslintrc.*
+coverage/

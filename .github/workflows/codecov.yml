@@ -1,0 +1,223 @@
+name: Upload coverage results to CodeCov
+
+on:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
+        description: 'Token for uploading coverage to Codecov'
+
+jobs:
+  upload-coverage:
+    name: 📊 Upload Coverage Reports
+    runs-on: ubuntu-latest
+    steps:
+      # Ensure we're on the main branch
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 🔍 Verify main branch
+        run: |
+          CURRENT_BRANCH=$(git branch --show-current)
+          if [ "$CURRENT_BRANCH" != "main" ]; then
+            echo "::error::This workflow must run on the main branch. Current branch: $CURRENT_BRANCH"
+            exit 1
+          fi
+          echo "✅ Running on main branch"
+
+      # Download coverage artifacts from test workflow
+      - name: 📥 Download coverage artifacts
+        id: download-artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-reports
+          path: coverage-reports
+
+      # Verify artifacts were downloaded and check their age
+      - name: 🧪 Verify artifacts integrity
+        id: verify-artifacts
+        run: |
+          # Check if artifacts exist
+          if [ ! -d "coverage-reports" ] || [ -z "$(ls -A coverage-reports 2>/dev/null)" ]; then
+            echo "::error::No coverage artifacts found or directory is empty"
+            exit 1
+          fi
+          
+          # Count artifacts for reporting
+          ARTIFACT_COUNT=$(find coverage-reports -type f -name "lcov.info" | wc -l)
+          if [ "$ARTIFACT_COUNT" -eq 0 ]; then
+            echo "::error::No lcov.info files found in artifacts"
+            exit 1
+          fi
+          
+          # Check artifact age (based on file timestamps)
+          ARTIFACT_TIME=$(find coverage-reports -type f -name "lcov.info" -exec stat -c %Y {} \; | sort -n | tail -1)
+          CURRENT_TIME=$(date +%s)
+          HOURS_OLD=$(( (CURRENT_TIME - ARTIFACT_TIME) / 3600 ))
+          
+          echo "Artifacts are approximately $HOURS_OLD hours old"
+          
+          if [ $HOURS_OLD -gt 24 ]; then
+            echo "::warning::Coverage artifacts are more than 24 hours old ($HOURS_OLD hours)"
+          else
+            echo "✅ Artifacts are recent ($HOURS_OLD hours old)"
+          fi
+          
+          echo "Found $ARTIFACT_COUNT lcov.info files in the artifacts"
+          echo "artifact_count=$ARTIFACT_COUNT" >> $GITHUB_OUTPUT
+          echo "artifact_age=$HOURS_OLD" >> $GITHUB_OUTPUT
+          echo "✅ Artifacts verified"
+
+      # Create directory structure for processing
+      - name: 🏗️ Restore coverage file structure
+        id: setup-directories
+        run: |
+          mkdir -p combined-coverage
+          
+          # Count files before restoration for validation
+          BEFORE_COUNT=$(find coverage-reports -type f -name "lcov.info" | wc -l)
+          
+          # Restore the original directory structure by moving files back to their source locations
+          RESTORED_COUNT=0
+          find coverage-reports -type f -name "lcov.info" | while read -r file; do
+            relative_path=${file#coverage-reports/}
+            # Create the directory if it doesn't exist
+            mkdir -p $(dirname "${relative_path}")
+            # Move the file
+            mv "$file" "${relative_path}"
+            echo "Restored: ${relative_path}"
+            RESTORED_COUNT=$((RESTORED_COUNT + 1))
+          done
+          
+          # Verify all files were moved correctly
+          if [ $RESTORED_COUNT -ne $BEFORE_COUNT ]; then
+            echo "::warning::Expected to restore $BEFORE_COUNT files, but only restored $RESTORED_COUNT"
+          else
+            echo "✅ Successfully restored $RESTORED_COUNT coverage files"
+          fi
+          
+          echo "restored_count=$RESTORED_COUNT" >> $GITHUB_OUTPUT
+
+      # Upload individual package coverage
+      - name: 📤 Upload per-package coverage reports
+        id: upload-package-coverage
+        continue-on-error: true  # Don't fail the whole workflow if one package fails
+        run: |
+          # Download codecov uploader with retry logic
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            curl -Os https://uploader.codecov.io/latest/linux/codecov && break
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Failed to download Codecov uploader, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+            sleep 5
+          done
+          
+          if [ ! -f "codecov" ]; then
+            echo "::error::Failed to download Codecov uploader after $MAX_RETRIES attempts"
+            exit 1
+          fi
+          
+          chmod +x codecov
+
+          TOTAL_PACKAGES=0
+          SUCCESSFUL_UPLOADS=0
+          FAILED_UPLOADS=0
+          
+          for file in $(find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info'); do
+            TOTAL_PACKAGES=$((TOTAL_PACKAGES + 1))
+            pkg=$(echo $file | sed -E 's|.*/packages/([^/]+)/coverage/lcov.info|\1|')
+            echo "📦 Uploading coverage for $pkg"
+          
+            # Try up to 2 times per package
+            for attempt in {1..2}; do
+              ./codecov --file "$file" --flag "$pkg" --name "$pkg" --token "${{ secrets.CODECOV_TOKEN }}"
+          
+              if [ $? -eq 0 ]; then
+                echo "✅ Successfully uploaded coverage for $pkg"
+                SUCCESSFUL_UPLOADS=$((SUCCESSFUL_UPLOADS + 1))
+                break
+              else
+                echo "⚠️ Attempt $attempt failed for $pkg"
+                if [ $attempt -lt 2 ]; then
+                  echo "Retrying..."
+                  sleep 3
+                else
+                  echo "::warning::Failed to upload coverage for package $pkg after 2 attempts"
+                  FAILED_UPLOADS=$((FAILED_UPLOADS + 1))
+                fi
+              fi
+            done
+          done
+          
+          echo "📊 Upload Summary: $SUCCESSFUL_UPLOADS successful, $FAILED_UPLOADS failed out of $TOTAL_PACKAGES packages"
+          
+          # Set output variables
+          echo "total_packages=$TOTAL_PACKAGES" >> $GITHUB_OUTPUT
+          echo "successful_uploads=$SUCCESSFUL_UPLOADS" >> $GITHUB_OUTPUT
+          echo "failed_uploads=$FAILED_UPLOADS" >> $GITHUB_OUTPUT
+          
+          # Determine overall success - if we uploaded at least one package successfully
+          if [ $SUCCESSFUL_UPLOADS -eq 0 ] && [ $TOTAL_PACKAGES -gt 0 ]; then
+            echo "::error::All package uploads failed"
+            exit 1
+          fi
+
+      # Merge and upload combined coverage
+      - name: 🔄 Merge coverage reports
+        id: merge-coverage
+        run: |
+          mkdir -p combined-coverage
+          
+          # Count files being merged for validation
+          LCOV_COUNT=$(find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info' | wc -l)
+          echo "Found $LCOV_COUNT lcov.info files to merge"
+          
+          if [ $LCOV_COUNT -eq 0 ]; then
+            echo "::error::No lcov.info files found to merge"
+            exit 1
+          fi
+          
+          # Merge the files with better error handling
+          find ./packages -type f -name 'lcov.info' -path '*/coverage/lcov.info' -exec cat {} + > ./combined-coverage/lcov.info
+          
+          # Check if merged file has content
+          MERGED_SIZE=$(wc -c < ./combined-coverage/lcov.info)
+          if [ ! -s ./combined-coverage/lcov.info ] || [ $MERGED_SIZE -eq 0 ]; then
+            echo "::error::Failed to merge coverage files or no coverage data found"
+            exit 1
+          fi
+          
+          echo "✅ Successfully merged $LCOV_COUNT coverage files ($(du -h ./combined-coverage/lcov.info | cut -f1) total)"
+          echo "lcov_count=$LCOV_COUNT" >> $GITHUB_OUTPUT
+          echo "merged_size=$MERGED_SIZE" >> $GITHUB_OUTPUT
+
+      - name: 📤 Upload combined coverage report
+        id: upload-combined-coverage
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./combined-coverage/lcov.info
+          flags: total
+          name: total
+          fail_ci_if_error: true
+          verbose: true
+
+      - name: 🧹 Clean coverage files and artifacts
+        if: always() && (steps.upload-combined-coverage.outcome == 'success' || steps.upload-package-coverage.outputs.successful_uploads > 0)
+        run: |
+          echo "🧹 Cleaning up coverage directories..."
+          
+          # Count before cleanup for verification
+          COVERAGE_DIRS=$(find . -type d -name coverage | wc -l)
+          echo "Found $COVERAGE_DIRS coverage directories to clean"
+          
+          # Clean coverage directories
+          find . -type d -name coverage -exec rm -rf {} + 2>/dev/null || true
+          
+          echo "🧹 Cleaning up artifacts..."
+          rm -rf coverage-reports combined-coverage
+          
+          echo "✅ Cleanup completed successfully"

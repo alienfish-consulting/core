@@ -4,9 +4,9 @@ import {
   hasContext,
   assertContext,
   getContextField,
-} from './accessors';
-import { runWithContext } from './lifecycle';
-import type { RequestContext } from './types';
+} from './accessors.js';
+import { runWithContext } from './lifecycle.js';
+import type { RequestContext } from './types.js';
 
 describe('accessors', () => {
   const context: RequestContext = {

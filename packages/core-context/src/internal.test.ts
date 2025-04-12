@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { setContext } from './internal';
-import { getContext } from './accessors';
-import type { RequestContext } from './types';
+import { setContext } from './internal.js';
+import { getContext } from './accessors.js';
+import type { RequestContext } from './types.js';
 
 describe('internal', () => {
   it('setContext sets the request context manually', () => {

@@ -25,7 +25,7 @@ A centralized collection of enterprise-ready, open source packages maintained by
 
 ### Prerequisites
 
-This project uses [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/) for package management.
+This project uses [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/) for package management, and [nektos/act](https://github.com/nektos/act)(optional) for local GitHub Actions testing. Make sure you have them installed:
 
 ```bash
 # Check your Node.js version (should match .nvmrc)
@@ -33,6 +33,9 @@ node -v
 
 # Install pnpm if you don't have it
 npm install -g pnpm@10.6.4
+
+# (Optional) Install act for local GitHub Actions testing
+brew install act
 ```
 
 ### Installation

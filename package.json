@@ -4,6 +4,8 @@
   "license": "MIT",
   "scripts": {
     "prepare": "husky",
+    "nx:reset": "nx reset",
+    "nx:new-package": "nx generate @alienfishconsulting/alienfish-core:new-package",
     "coverage:clean": "find . -type d -name coverage -exec rm -rf {} +",
     "build": "nx affected -t build",
     "test": "nx affected -t test",
@@ -25,9 +27,11 @@
     "@nx/eslint": "20.7.1",
     "@nx/eslint-plugin": "20.7.1",
     "@nx/js": "20.7.1",
+    "@nx/plugin": "20.7.1",
     "@nx/vite": "20.7.1",
     "@nx/web": "20.7.1",
     "@swc-node/register": "~1.9.1",
+    "@swc/cli": "~0.6.0",
     "@swc/core": "~1.5.7",
     "@swc/helpers": "~0.5.11",
     "@types/node": "18.16.9",
@@ -70,5 +74,8 @@
     "commitizen": {
       "path": "cz-conventional-changelog"
     }
+  },
+  "dependencies": {
+    "@nx/devkit": "20.7.1"
   }
 }

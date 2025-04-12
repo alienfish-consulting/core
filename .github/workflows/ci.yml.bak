@@ -1,0 +1,319 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: ['**']
+  workflow_dispatch:
+    inputs:
+      target-branch:
+        description: 'Target branch'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - 'main'
+          - 'development'
+          - 'release'
+      runAll:
+        description: 'Run on all packages instead of affected'
+        required: false
+        default: 'true'
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  # Determine base reference and parameters
+  determine-base:
+    name: 🧠 Determine Base Reference
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    outputs:
+      base-ref: ${{ steps.base.outputs.BASE_REF }}
+      run-all: ${{ steps.params.outputs.RUN_ALL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Determine affected base
+        id: base
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "BASE_REF=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "BASE_REF=origin/${{ github.event.inputs.target-branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "BASE_REF=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine runAll parameter
+        id: params
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "RUN_ALL=${{ github.event.inputs.runAll }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+            if [[ "$TARGET_BRANCH" == "main" || "$TARGET_BRANCH" == "release" || "$TARGET_BRANCH" == "development" ]]; then
+              echo "RUN_ALL=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "RUN_ALL=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "RUN_ALL=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Run lint on PR opened/synchronized
+  lint:
+    name: Lint Job
+    needs: determine-base
+    if: github.event.action != 'closed'
+    uses: ./.github/workflows/lint.yml
+    with:
+      base-ref: ${{ needs.determine-base.outputs.base-ref }}
+      runAll: ${{ needs.determine-base.outputs.run-all }}
+
+  # Run test on PR opened/synchronized
+  test:
+    name: Test Job
+    needs: determine-base
+    if: github.event.action != 'closed'
+    uses: ./.github/workflows/test.yml
+    with:
+      base-ref: ${{ needs.determine-base.outputs.base-ref }}
+      runAll: ${{ needs.determine-base.outputs.run-all }}
+
+  # Run build on PR opened/synchronized
+  build:
+    name: Build Job
+    needs: determine-base
+    if: github.event.action != 'closed'
+    uses: ./.github/workflows/build.yml
+    with:
+      base-ref: ${{ needs.determine-base.outputs.base-ref }}
+      runAll: ${{ needs.determine-base.outputs.run-all }}
+
+  # Run codecov after test completes
+  codecov:
+    name: Coverage Job
+    needs: [determine-base, test]
+    if: github.event.action != 'closed'
+    uses: ./.github/workflows/codecov.yml
+    with:
+      base-ref: ${{ needs.determine-base.outputs.base-ref }}
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # Validate all jobs complete successfully
+  validate:
+    name: Validate All
+    runs-on: ubuntu-latest
+    needs: [lint, test, build, codecov]
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    steps:
+      - name: Check Results
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" || \
+                "${{ needs.test.result }}" != "success" || \
+                "${{ needs.build.result }}" != "success" || \
+                "${{ needs.codecov.result }}" != "success" ]]; then
+            echo "❌ One or more jobs failed"
+            exit 1
+          fi
+          echo "✅ All validation jobs passed"
+
+  # Handle PR merged to development
+  merged-to-development:
+    name: 🚀 Process Merge to Development
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'development'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.6.4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🛠️ Build
+        run: pnpm nx run-many -t build --all
+
+      - name: 🕵️ Check for pending changesets
+        id: changeset-status
+        run: |
+          pnpm changeset status --output .changeset/status.json
+          if [ -f ".changeset/status.json" ]; then
+            echo "HAS_CHANGESETS=$(jq '.releases | length > 0' .changeset/status.json)" >> "$GITHUB_OUTPUT"
+          else
+            echo "HAS_CHANGESETS=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 🔄 Version Bump Packages
+        if: steps.changeset-status.outputs.HAS_CHANGESETS == 'true'
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          pnpm changeset version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Generate Version Info
+        if: steps.changeset-status.outputs.HAS_CHANGESETS == 'true'
+        id: version-info
+        run: |
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          RELEASE_BRANCH="release/v${VERSION}-${TIMESTAMP}"
+          
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_BRANCH=${RELEASE_BRANCH}" >> "$GITHUB_OUTPUT"
+
+      - name: 🌿 Create Release Branch
+        if: steps.changeset-status.outputs.HAS_CHANGESETS == 'true'
+        run: |
+          git checkout -b ${{ steps.version-info.outputs.RELEASE_BRANCH }}
+          git add .
+          git commit -m "chore: prepare release v${{ steps.version-info.outputs.VERSION }}"
+          git push origin ${{ steps.version-info.outputs.RELEASE_BRANCH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: 🔀 Create PR to Main
+        if: steps.changeset-status.outputs.HAS_CHANGESETS == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          commit-message: "chore: release v${{ steps.version-info.outputs.VERSION }}"
+          title: "🚀 Release v${{ steps.version-info.outputs.VERSION }}"
+          body: |
+            🚀 This PR was automatically created by the CI workflow after merging to development.
+            
+            ## Changes in this release:
+            
+            <!-- Changesets content will be displayed here -->
+          base: main
+          branch: ${{ steps.version-info.outputs.RELEASE_BRANCH }}
+          draft: false
+          labels: release
+
+      - name: 📝 Comment on PR about Changesets Status
+        if: steps.changeset-status.outputs.HAS_CHANGESETS != 'true'
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ⚠️ No changesets found in this PR. A release cannot be created.
+            
+            Please make sure to include changesets if you want to trigger a new release.
+
+  # Handle PR merged to main
+  merged-to-main:
+    name: 📦 Process Merge to Main
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.6.4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: ♻️ Restore pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🛠️ Build
+        run: pnpm nx run-many -t build --all
+
+      - name: 🧪 Test
+        run: pnpm nx run-many -t test --all
+
+      - name: 🚀 Publish Packages
+        run: pnpm changeset publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 📝 Generate GitHub Release Notes
+        id: release_notes
+        run: |
+          VERSION_TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
+          echo "release_tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+
+          echo "## 📦 Released Packages" > release-notes.md
+          echo "" >> release-notes.md
+          
+          # If we have a changeset status from the previous PR, use it
+          if [ -f ".changeset/status.json" ]; then
+            echo "| Package | Version |" >> release-notes.md
+            echo "|---------|---------|" >> release-notes.md
+            jq -r '.releases[] | "| `" + .name + "` | `" + .newVersion + "` |"' .changeset/status.json >> release-notes.md
+          else
+            echo "Packages were published according to changeset specifications." >> release-notes.md
+          fi
+
+      - name: 📦 Package all CHANGELOGs
+        run: |
+          mkdir -p release-assets
+          find ./packages -name "CHANGELOG.md" -exec cp --parents {} release-assets/ \;
+          cd release-assets && zip -r changelogs.zip . && cd ..
+
+      - name: Run Codecov
+        uses: ./.github/workflows/codecov.yml
+        with:
+          base-ref: 'HEAD'
+        secrets:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: 🏷️ Tag GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.release_notes.outputs.release_tag }}
+          name: Release ${{ steps.release_notes.outputs.release_tag }}
+          body_path: release-notes.md
+          files: |
+            release-notes.md
+            release-assets/changelogs.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}

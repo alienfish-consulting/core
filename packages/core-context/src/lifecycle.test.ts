@@ -4,9 +4,9 @@ import {
   createDefaultContext,
   initWithDefaultContext,
   runWithContext,
-} from './lifecycle';
-import { getContext, hasContext } from './accessors';
-import type { RequestContext } from './types';
+} from './lifecycle.js';
+import { getContext, hasContext } from './accessors.js';
+import type { RequestContext } from './types.js';
 
 describe('lifecycle', () => {
   const mockContext: RequestContext = {

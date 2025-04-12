@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   extractContextFromHeaders,
   updateContextFromHeaders,
-} from './headers';
-import { getContext } from './accessors';
-import type { RequestContext } from './types';
-import { setContext } from './internal';
+} from './headers.js';
+import { getContext } from './accessors.js';
+import type { RequestContext } from './types.js';
+import { setContext } from './internal.js';
 
 describe('headers', () => {
   it('extractContextFromHeaders pulls values from headers correctly', () => {

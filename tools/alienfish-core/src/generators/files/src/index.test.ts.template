@@ -1,0 +1,15 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+
+describe('accessors', () => {
+  const foo: {[key: string]: string}  = {
+    bar: 'baz',
+  };
+
+  beforeEach(() => {
+    foo.bam = 'baz';
+  });
+
+  it('getContext returns undefined outside runWithContext', () => {
+    expect(foo.bam).toBe('baz');
+  });
+});

@@ -5,6 +5,12 @@
   "references": [
     {
       "path": "./packages/core-context"
+    },
+    {
+      "path": "./packages/feature-flags"
+    },
+    {
+      "path": "./tools/alienfish-core"
     }
   ]
 }
