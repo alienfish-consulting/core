@@ -21,10 +21,6 @@ on:
       NX_CLOUD_ACCESS_TOKEN:
         description: "Nx Cloud access token"
         required: true
-    outputs:
-      lint-summary:
-        description: "Lint summary"
-        value: ${{ jobs.lint.outputs.lint-summary }}
 
 jobs:
   lint:
@@ -32,8 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-    outputs:
-      lint-summary: ${{ steps.lint-summary.outputs.lint-summary }}
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -41,7 +35,6 @@ jobs:
           fetch-depth: 0
 
       - name: 🧮 Calculate Nx Base and Head
-        if: ${{ inputs.run-affected == true }}
         uses: nrwl/nx-set-shas@v4
         with:
           main-branch-name: 'main'
@@ -89,25 +82,18 @@ jobs:
       - name: 📊 Generate Lint Summary
         id: lint-summary
         run: |
-          echo "LINT_SUMMARY<<EOF" >> $GITHUB_ENV
-          echo "## 🧹 Lint Results" >> $GITHUB_ENV
-          echo "" >> $GITHUB_ENV
+          echo "## 🧹 Lint Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.run-lint.outputs.lint_exit_code }}" == "0" ]; then
-            echo "✅ Lint passed successfully" >> $GITHUB_ENV
+            echo "✅ Lint passed successfully" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Lint failed" >> $GITHUB_ENV
-            echo "" >> $GITHUB_ENV
-            echo "### Lint Output" >> $GITHUB_ENV
-            echo "\`\`\`" >> $GITHUB_ENV
-            cat lint_output.txt >> $GITHUB_ENV
-            echo "\`\`\`" >> $GITHUB_ENV
+            echo "❌ Lint failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Lint Output" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat lint_output.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: 📝 Output Lint Summary
-        run: |
-          echo "${{ env.LINT_SUMMARY }}" >> $GITHUB_STEP_SUMMARY
-          echo "lint-summary=${{ env.LINT_SUMMARY }}" >> $GITHUB_OUTPUT
 
       - name: 🚨 Check Lint Status
         if: steps.run-lint.outputs.lint_exit_code != 0

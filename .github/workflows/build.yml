@@ -22,12 +22,12 @@ on:
         description: "Nx Cloud access token"
         required: true
     outputs:
-      build-summary:
-        description: "Build summary"
-        value: ${{ jobs.build.outputs.build-summary }}
       build-cache-key:
         description: "Build cache key"
         value: ${{ jobs.build.outputs.build-cache-key }}
+      build-artifact-key:
+        description: "Build artifact key"
+        value: ${{ jobs.build.outputs.build-artifact-key }}
 
 jobs:
   build:
@@ -36,7 +36,6 @@ jobs:
     env:
       NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     outputs:
-      build-summary: ${{ steps.build-summary.outputs.build-summary }}
       build-cache-key: ${{ steps.build-keys.outputs.build-cache-key }}
       build-artifact-key: ${{ steps.build-keys.outputs.build-artifact-key }}
     steps:
@@ -79,8 +78,8 @@ jobs:
 
       - name: Create build cache keys
         id: build-keys
-        run: | 
-          echo "build-cache-key=build-${{ inputs.cache-version }}-node-${{ inputs.node-version }}-pnpm${{ inputs.pnpm-version }}-${{ github.sha }}" >> $GITHUB_OUTPUT
+        run: |
+          echo "build-cache-key=build-node-${{ inputs.node-version }}-pnpm${{ inputs.pnpm-version }}-${{ github.sha }}" >> $GITHUB_OUTPUT
           echo "build-artifact-key=build-artifacts-node-${{ inputs.node-version }}-pnpm-${{ inputs.pnpm-version }}-${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: 💾 Cache build artifacts
@@ -88,8 +87,7 @@ jobs:
         id: build-cache
         with:
           path: |
-            dist
-            */*/dist
+            packages/*/dist
           key: ${{ steps.build-keys.outputs.build-artifact-key }}
 
       - name: 🏗️ Build affected projects
@@ -103,39 +101,77 @@ jobs:
           echo "✅ Build completed successfully"
           echo "build-success=true" >> $GITHUB_OUTPUT
 
+      # This step verifies what will be uploaded
+      - name: 🔍 Verify build artifacts
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        id: verify-artifacts
+        run: |
+          echo "Verifying build artifacts..."
+          
+          # List all dist directories that will be included
+          PACKAGE_DISTS=$(find ./packages -type d -name "dist" | sort)
+          
+          # Count them
+          DIST_COUNT=$(echo "$PACKAGE_DISTS" | wc -l)
+          
+          # Store the list for the summary
+          echo "PACKAGE_DISTS<<EOF" >> $GITHUB_ENV
+          echo "$PACKAGE_DISTS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          
+          echo "dist_count=$DIST_COUNT" >> $GITHUB_OUTPUT
+          
+          # Confirm no node_modules or tools/dist will be included
+          NODE_MODULES_DISTS=$(find ./node_modules -type d -name "dist" 2>/dev/null | wc -l)
+          TOOLS_DIST=$(find ./tools -type d -name "dist" 2>/dev/null | wc -l)
+          
+          echo "Found $DIST_COUNT package dist folders to upload"
+          echo "Found $NODE_MODULES_DISTS node_modules dist folders (will be excluded)"
+          echo "Found $TOOLS_DIST tools dist folders (will be excluded)"
+          
+          # Make sure we have at least some dist folders
+          if [[ $DIST_COUNT -eq 0 ]]; then
+            echo "::warning::No dist folders found in packages directory! Build may have failed."
+          fi
+
       - name: 📤 Upload build artifacts
         if: steps.build-cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{steps.build-cache-key.outputs.build-cache-key }}
+          name: ${{steps.build-keys.outputs.build-cache-key }}
           path: |
-            dist
-            */*/dist
+            packages/*/dist
           retention-days: 3
 
       - name: 📊 Generate Build Summary
         id: build-summary
         run: |
-          echo "BUILD_SUMMARY<<EOF" >> $GITHUB_ENV
-          echo "## 🏗️ Build Results" >> $GITHUB_ENV
-          echo "" >> $GITHUB_ENV
-          echo "✅ Build completed successfully" >> $GITHUB_ENV
-          echo "" >> $GITHUB_ENV
-          echo "### 📦 Build Artifacts" >> $GITHUB_ENV
-          echo "" >> $GITHUB_ENV
-          echo "| Directory | Size |" >> $GITHUB_ENV
-          echo "| --- | --- |" >> $GITHUB_ENV
+          echo "## 🏗️ Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           
-          find . -type d -name "dist" | while read dir; do
-            SIZE=$(du -sh "$dir" | cut -f1)
-            echo "| \`$dir\` | $SIZE |" >> $GITHUB_ENV
+          if [[ "${{ steps.build-cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "✅ Build artifacts restored from cache" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Build completed successfully" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Build Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          
+          # Only show packages/*/dist folders
+          echo "$PACKAGE_DISTS" | while read dir; do
+            if [[ -d "$dir" ]]; then
+              # Extract package name from path
+              PACKAGE_NAME=$(echo "$dir" | sed -E 's|./packages/([^/]+)/dist|\1|')
+              SIZE=$(du -sh "$dir" | cut -f1)
+              echo "| \`$PACKAGE_NAME\` | $SIZE |" >> $GITHUB_STEP_SUMMARY
+            fi
           done
           
-          echo "" >> $GITHUB_ENV
-          echo "Artifacts are available for download from this workflow run." >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      - name: 📝 Output Build Summary
-        run: |
-          echo "${{ env.BUILD_SUMMARY }}" >> $GITHUB_STEP_SUMMARY
-          echo "build-summary=${{ env.BUILD_SUMMARY }}" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Total artifacts: ${{ steps.verify-artifacts.outputs.dist_count }} packages" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Only packages/*/dist folders are included in artifacts." >> $GITHUB_STEP_SUMMARY
