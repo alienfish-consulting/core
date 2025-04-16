@@ -1,0 +1,60 @@
+name: "📦 Setup Repository Checkout"
+description: "Performs sparse or full checkout and conditionally configures Nx Cloud"
+author: "Terry Lee Allen, Jr"
+
+inputs:
+  sparse-checkout:
+    description: "Enable sparse checkout for faster cloning"
+    required: false
+    default: 'false'
+
+outputs:
+  branch:
+    description: "The current Git branch"
+    value: ${{ steps.repo-meta.outputs.branch }}
+  commit:
+    description: "The current Git commit SHA"
+    value: ${{ steps.repo-meta.outputs.commit }}
+  sparse-checkout-used:
+    description: "Whether sparse checkout was enabled"
+    value: ${{ inputs.sparse-checkout }}
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+        token: ${{ env.GH_PAT }}
+        sparse-checkout: ${{ inputs.sparse-checkout == 'true' && 'package.json pnpm-lock.yaml nx.json tsconfig.json .github apps libs' || '' }}
+        sparse-checkout-cone-mode: false
+
+    - name: 🧾 Capture Repository Metadata
+      id: repo-meta
+      shell: bash
+      run: |
+        echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+        echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+    - name: 📊 Checkout Summary
+      shell: bash
+      env:
+        BRANCH: ${{ steps.repo-meta.outputs.branch }}
+        COMMIT: ${{ steps.repo-meta.outputs.commit }}
+        SPARSE: ${{ inputs.sparse-checkout }}
+      run: |
+        echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+        echo "┃                    📦 Repository Setup Summary                        ┃"
+        echo "┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫"
+        echo "┃ • Branch: ${BRANCH}" 
+        echo "┃ • Commit: ${COMMIT}" 
+        echo "┃ • Sparse Checkout Used: ${SPARSE}" 
+        echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+
+        echo "## 📦 Repository Setup Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch:** ${BRANCH}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${COMMIT}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Sparse Checkout:** ${SPARSE}" >> $GITHUB_STEP_SUMMARY

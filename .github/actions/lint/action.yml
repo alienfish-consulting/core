@@ -1,0 +1,133 @@
+name: '🧹 Lint'
+description: 'Lints affected or all projects using Nx with ESLint'
+author: 'Terry Lee Allen, Jr.'
+
+inputs:
+  run-affected:
+    description: 'Whether to run affected or all projects'
+    required: false
+    default: 'true'
+
+  affected-target:
+    description: 'Nx target to run for affected linting'
+    required: false
+    default: 'lint'
+
+  run-many-target:
+    description: 'Nx target to run for all-project linting'
+    required: false
+    default: 'lint'
+
+  cli-flags:
+    description: 'Additional CLI flags for nx'
+    required: false
+    default: ''
+
+outputs:
+  lint-success:
+    description: 'Whether the lint step succeeded'
+    value: ${{ steps.lint-status.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🧪 Verify dependencies are installed
+      shell: bash
+      run: |
+        echo "📦 Verifying node_modules..."
+        if [ ! -d "node_modules" ]; then
+          echo "❌ Root node_modules not found. Did you run setup-node?"
+          exit 1
+        fi
+
+        if [ -z "$(find packages -type d -name node_modules)" ]; then
+          echo "❌ Nested node_modules directories not found. Did you run setup-node?"
+          exit 1
+        fi
+        echo "✅ All dependencies are installed."
+
+    - name: 📁 Verify Nx cache exists
+      shell: bash
+      run: |
+        echo "🧠 Verifying .nx and .cache/nx directories..."
+        if [ ! -d ".nx" ]; then
+          echo "❌ .nx directory missing. Did you run setup-nx?"
+          exit 1
+        fi
+
+        if [ -z "$(find packages -type d -path '*/node_modules/.cache/nx')" ]; then
+          echo "ℹ️ Skipping validation of node_modules/.cache/nx — will be created after Nx commands run."
+          exit 0
+        fi
+        echo "✅ Nx cache directories are in place."
+
+    - name: 🔍 Validate Nx SHAs (for affected linting)
+      if: ${{ inputs.run-affected == 'true' }}
+      shell: bash
+      run: |
+        echo "🧮 Validating NX_BASE and NX_HEAD..."
+        if [ -z "$NX_BASE" ] || [ -z "$NX_HEAD" ]; then
+          echo "❌ NX_BASE or NX_HEAD is not set. Did you run nx-set-shas?"
+          exit 1
+        fi
+        echo "✅ NX_BASE=$NX_BASE"
+        echo "✅ NX_HEAD=$NX_HEAD"
+
+    - name: 🧹 Run affected lint
+      if: ${{ inputs.run-affected == 'true' }}
+      id: run-affected-lint
+      shell: bash
+      run: |
+        echo "🔍 Running lint on affected projects..."
+        pnpm nx affected --target=${{ inputs.affected-target }} --base=$NX_BASE --head=$NX_HEAD --parallel=3 ${{ inputs.cli-flags }} > lint_output.txt
+        LINT_EXIT_CODE=$?
+        echo "exit_code=$LINT_EXIT_CODE" >> $GITHUB_OUTPUT
+        exit $LINT_EXIT_CODE
+
+    - name: 🧹 Run all lint
+      if: ${{ inputs.run-affected == 'false' }}
+      id: run-all-lint
+      shell: bash
+      run: |
+        echo "🔍 Running lint on all projects..."
+        pnpm nx run-many --target=${{ inputs.run-many-target }} --parallel=3 ${{ inputs.cli-flags }} > lint_output.txt
+        LINT_EXIT_CODE=$?
+        echo "exit_code=$LINT_EXIT_CODE" >> $GITHUB_OUTPUT
+        exit $LINT_EXIT_CODE
+
+    - name: 📊 Lint Summary
+      id: lint-status
+      if: always()
+      shell: bash
+      run: |
+        AFFECTED_CODE="${{ steps.run-affected-lint.outputs.exit_code || '' }}"
+        ALL_CODE="${{ steps.run-all-lint.outputs.exit_code || '' }}"
+
+        echo "## 🧹 Lint Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "$AFFECTED_CODE" == "0" || "$ALL_CODE" == "0" ]]; then
+          echo "✅ Lint passed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "success=true" >> $GITHUB_OUTPUT
+
+        elif [[ -z "$AFFECTED_CODE" && -z "$ALL_CODE" ]]; then
+          echo "🟡 No linting was run — likely no affected projects." >> $GITHUB_STEP_SUMMARY
+          echo "✅ Considered successful." >> $GITHUB_STEP_SUMMARY
+          echo "success=true" >> $GITHUB_OUTPUT
+
+        else
+          echo "❌ Lint failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Lint Output" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f lint_output.txt ]; then
+            cat lint_output.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "(No output — lint_output.txt not found)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "success=false" >> $GITHUB_OUTPUT
+        fi
+    

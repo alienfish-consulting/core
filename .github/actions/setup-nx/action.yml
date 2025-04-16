@@ -1,0 +1,85 @@
+name: 'NX Initialization'
+description: 'Initializes the local NX Cache'
+author: 'Terry Lee Allen, Jr'
+
+inputs:
+  node-version:
+    description: 'Node.js version'
+    required: false
+    default: '22'
+  pnpm-version:
+    description: 'PNPM version'
+    required: false
+    default: '10.6.4'
+  cache-version:
+    description: 'Cache version for manual invalidation'
+    required: false
+    default: 'v1'
+  run-affected:
+    description: 'Whether to run nx-set-shas for affected workflows'
+    required: false
+    default: 'false'
+
+outputs:
+  cache-key:
+    description: 'Cache key for cached Nx artifacts'
+    value: ${{ steps.generate-cache-key.outputs.key }}
+  cache-hit:
+    description: 'Whether Nx cache was hit'
+    value: ${{ steps.cache.outputs.cache-hit || 'false' }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔑 Generate versioned cache key
+      id: generate-cache-key
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "🔄 Generating Nx cache key..."
+        NODE_VERSION="${{ inputs.node-version }}"
+        PNPM_VERSION="${{ inputs.pnpm-version }}"
+        CACHE_VERSION="${{ inputs.cache-version }}"
+        GITHUB_SHA=${{ github.sha }}
+        NX_KEY="${CACHE_VERSION}-node${NODE_VERSION}-pnpm${PNPM_VERSION}-nx-${GITHUB_SHA:0:8}"
+        echo "key=${NX_KEY}" >> $GITHUB_OUTPUT
+
+    - name: 🧠 Restore Nx Cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          .nx
+          **/node_modules/.cache/nx
+        key: ${{ steps.generate-cache-key.outputs.key }}
+
+    - name: 🧹 Reset NX
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "🧹 Resetting NX local cache..."
+        pnpx nx reset    
+
+    - name: 🧮 Calculate Nx Base and Head
+      if: inputs.run-affected == 'true'
+      uses: nrwl/nx-set-shas@v4
+      with:
+        main-branch-name: 'main'
+
+    - name: 📊 Nx Cache Summary
+      shell: bash
+      env:
+        NX_HIT: ${{ steps.cache.outputs.cache-hit || 'false' }}
+        NX_KEY: ${{ steps.generate-cache-key.outputs.key }}
+      run: |
+        echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+        echo "┃                         🧠 NX CACHE INITIALIZED                      ┃"
+        echo "┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫"
+        echo "┃ • Cache Hit:  ${NX_HIT^^}                                             "
+        echo "┃ • Cache Key:  ${NX_KEY}                                               "
+        echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+
+        echo "## 🧠 Nx Cache Setup Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cache Hit:** ${NX_HIT^^}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cache Key:** \`${NX_KEY}\`" >> $GITHUB_STEP_SUMMARY

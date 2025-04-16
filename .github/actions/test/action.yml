@@ -1,0 +1,119 @@
+name: '🧪 Test'
+description: 'Runs tests for Nx monorepo projects'
+author: 'Terry Lee Allen, Jr'
+
+inputs:
+  run-affected:
+    description: 'Run only affected tests'
+    required: false
+    default: 'true'
+
+  affected-target:
+    description: 'Nx target to run for affected projects'
+    required: false
+    default: 'test'
+
+  run-many-target:
+    description: 'Nx target to run across all projects (if not affected)'
+    required: false
+    default: 'test'
+
+  cli-flags:
+    description: 'Additional CLI flags to forward to Nx commands'
+    required: false
+    default: ''
+
+outputs:
+  test-success:
+    description: 'Whether all tests passed successfully'
+    value: ${{ steps.test-status.outputs.success }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🧪 Verify dependencies are installed
+      shell: bash
+      run: |
+        echo "📦 Verifying node_modules..."
+        if [ ! -d "node_modules" ]; then
+          echo "❌ Root node_modules not found. Did you run setup-node?"
+          exit 1
+        fi
+
+        if [ -z "$(find packages -type d -name node_modules)" ]; then
+          echo "❌ Nested node_modules directories not found. Did you run setup-node?"
+          exit 1
+        fi
+        echo "✅ All dependencies are installed."
+
+    - name: 📁 Verify Nx cache exists
+      shell: bash
+      run: |
+        echo "🧠 Verifying .nx and .cache/nx directories..."
+        if [ ! -d ".nx" ]; then
+          echo "❌ .nx directory missing. Did you run setup-nx?"
+          exit 1
+        fi
+
+        if [ -z "$(find packages -type d -path '*/node_modules/.cache/nx')" ]; then
+          echo "ℹ️ Skipping validation of node_modules/.cache/nx — will be created after Nx commands run."
+          exit 0
+        fi
+        echo "✅ Nx cache directories are in place."
+
+    - name: 🔍 Validate Nx SHAs (only for affected)
+      if: ${{ inputs.run-affected == 'true' }}
+      shell: bash
+      run: |
+        echo "🧮 Validating NX_BASE and NX_HEAD..."
+        if [ -z "$NX_BASE" ] || [ -z "$NX_HEAD" ]; then
+          echo "❌ NX_BASE or NX_HEAD is not set. Did you run nx-set-shas?"
+          exit 1
+        fi
+        echo "✅ NX_BASE=$NX_BASE"
+        echo "✅ NX_HEAD=$NX_HEAD"
+
+    - name: 🧪 Run affected tests
+      if: ${{ inputs.run-affected == 'true' }}
+      id: affected-tests
+      shell: bash
+      run: |
+        echo "🔍 Running affected tests..."
+        echo "🧪 pnpm nx affected --target=${{ inputs.affected-target }} ${{ inputs.cli-flags }}"
+        pnpm nx affected --target=${{ inputs.affected-target }} ${{ inputs.cli-flags }}
+
+        EXIT=$?
+        echo "exit_code=$EXIT" >> $GITHUB_OUTPUT
+        exit $EXIT
+
+    - name: 🧪 Run all tests
+      if: ${{ inputs.run-affected == 'false' }}
+      id: all-tests
+      shell: bash
+      run: |
+        echo "🔍 Running all tests..."
+        echo "🧪 pnpm nx run-many --target=${{ inputs.run-many-target }} --parallel=3 ${{ inputs.cli-flags }}"
+        pnpm nx run-many --target=${{ inputs.run-many-target }} --parallel=3 ${{ inputs.cli-flags }}
+
+        EXIT=$?
+        echo "exit_code=$EXIT" >> $GITHUB_OUTPUT
+        exit $EXIT
+
+    - name: 📊 Test Summary
+      id: test-status
+      if: always()
+      shell: bash
+      run: |
+        AFFECTED_CODE="${{ steps.affected-tests.outputs.exit_code || 'NA' }}"
+        ALL_CODE="${{ steps.all-tests.outputs.exit_code || 'NA' }}"
+
+        echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "$AFFECTED_CODE" == "0" || "$ALL_CODE" == "0" ]]; then
+          echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+          echo "success=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
+          echo "success=false" >> $GITHUB_OUTPUT
+        fi

@@ -1,0 +1,135 @@
+name: '📊 Code Coverage'
+description: 'Processes and uploads code coverage reports for Nx monorepo projects'
+author: 'Terry Lee Allen, Jr'
+
+inputs:
+  codecov-token:
+    description: 'Codecov token for upload'
+    required: false
+    default: ''
+  branch-check:
+    description: 'Restrict coverage upload to this branch'
+    required: false
+    default: 'main'
+
+outputs:
+  coverage-artifact-key:
+    description: 'Coverage artifact key'
+    value: ${{ steps.package-coverage.outputs.artifact-name }}
+  lcov-count:
+    description: 'Number of lcov.info files merged'
+    value: ${{ steps.merge-coverage.outputs.lcov_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🔍 Verify branch
+      id: verify-branch
+      shell: bash
+      run: |
+        CURRENT_BRANCH="${GITHUB_REF_NAME:-$(git branch --show-current || git rev-parse --abbrev-ref HEAD)}"
+        echo "current_branch=$CURRENT_BRANCH" >> $GITHUB_OUTPUT
+        echo "✅ Current branch: $CURRENT_BRANCH"
+
+        if [[ "$CURRENT_BRANCH" != "${{ inputs.branch-check }}" ]]; then
+          echo "⚠️ Not on branch ${{ inputs.branch-check }}, skipping coverage upload"
+          echo "on_correct_branch=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "on_correct_branch=true" >> $GITHUB_OUTPUT
+
+    - name: 🔄 Merge coverage reports
+      id: merge-coverage
+      if: steps.verify-branch.outputs.on_correct_branch == 'true'
+      shell: bash
+      run: |
+        mkdir -p combined-coverage
+
+        LCOV_FILES=$(find packages -type f -name 'lcov.info' -path '*/coverage/lcov.info')
+        LCOV_COUNT=$(echo "$LCOV_FILES" | wc -l)
+
+        if [ "$LCOV_COUNT" -eq 0 ]; then
+          echo "::error::No lcov.info files found"
+          exit 1
+        fi
+
+        cat $LCOV_FILES > combined-coverage/lcov.info
+
+        echo "✅ Merged $LCOV_COUNT files into combined-coverage/lcov.info"
+        echo "lcov_count=$LCOV_COUNT" >> $GITHUB_OUTPUT
+
+    - name: 📋 Get commit metadata
+      id: git-info
+      if: steps.verify-branch.outputs.on_correct_branch == 'true'
+      shell: bash
+      run: |
+        COMMIT_HASH=$(git rev-parse --short HEAD)
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+        echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+    - name: 📦 Package coverage report
+      id: package-coverage
+      if: steps.verify-branch.outputs.on_correct_branch == 'true'
+      shell: bash
+      run: |
+        mkdir -p coverage-artifacts
+        cp combined-coverage/lcov.info coverage-artifacts/
+
+        COMMIT="${{ steps.git-info.outputs.commit_hash }}"
+        TIMESTAMP="${{ steps.git-info.outputs.timestamp }}"
+        ARTIFACT_NAME="coverage-${COMMIT}-${TIMESTAMP}"
+
+        # Create placeholder HTML
+        mkdir -p coverage-artifacts/html
+        echo "<html><body><h1>Coverage Report</h1><p>HTML not generated — see lcov.info</p></body></html>" > coverage-artifacts/html/index.html
+
+        # Generate COVERAGE.md
+        {
+          echo "# 📊 Coverage Report"
+          echo "- Commit: $COMMIT"
+          echo "- Branch: ${{ steps.verify-branch.outputs.current_branch }}"
+          echo "- Date: $(date -u)"
+          echo ""
+          echo "## Packages"
+          find packages -type f -name 'lcov.info' -path '*/coverage/lcov.info' | sed 's|/coverage/lcov.info||g' | xargs -n1 basename | sort
+        } > coverage-artifacts/COVERAGE.md
+
+        echo "artifact-name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+
+    - name: ☁️ Upload to Codecov
+      if: ${{ steps.verify-branch.outputs.on_correct_branch == 'true' && inputs.codecov-token != '' }}
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ inputs.codecov-token }}
+        files: ./combined-coverage/lcov.info
+        flags: release
+        name: ${{ steps.git-info.outputs.commit_hash }}
+        fail_ci_if_error: true
+        verbose: true
+
+    - name: 📤 Upload coverage artifact
+      if: steps.verify-branch.outputs.on_correct_branch == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.package-coverage.outputs.artifact-name }}
+        path: coverage-artifacts/
+        retention-days: 90
+
+    - name: 📊 GitHub summary
+      if: steps.verify-branch.outputs.on_correct_branch == 'true'
+      shell: bash
+      run: |
+        COUNT=${{ steps.merge-coverage.outputs.lcov_count }}
+        COMMIT=${{ steps.git-info.outputs.commit_hash }}
+        SIZE=$(du -h combined-coverage/lcov.info | cut -f1)
+
+        echo "## 📊 Coverage Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- Packages: $COUNT" >> $GITHUB_STEP_SUMMARY
+        echo "- Commit: \`$COMMIT\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Size: $SIZE" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📥 Artifact: \`${{ steps.package-coverage.outputs.artifact-name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "ℹ️ Report includes raw \`lcov.info\`, Markdown summary, and HTML placeholder." >> $GITHUB_STEP_SUMMARY

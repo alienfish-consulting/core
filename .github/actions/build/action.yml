@@ -1,0 +1,136 @@
+name: '🏗️ Build Application'
+description: 'Builds the application with Nx and generates a BOM for release workflows'
+author: 'Terry Lee Allen, Jr.'
+
+inputs:
+  build-dirs:
+    description: 'Comma-separated list of top-level directories to search for dist/ (e.g., packages,apps)'
+    required: false
+    default: 'packages'
+  run-affected:
+    description: 'Whether to run affected or all builds'
+    required: false
+    default: 'true'
+  cli-flags:
+    description: 'Additional CLI flags to pass to Nx'
+    required: false
+    default: ''
+
+outputs:
+  build-success:
+    description: 'Whether the build step completed successfully'
+    value: ${{ steps.build-step.outputs.success }}
+
+  bom-md-path:
+    description: 'Path to the generated Markdown BOM file'
+    value: bom/bom.md
+
+  bom-json-path:
+    description: 'Path to the generated JSON BOM file'
+    value: bom/bom.json
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🧪 Verify dependencies are installed
+      shell: bash
+      run: |
+        echo "📦 Verifying node_modules..."
+        if [ ! -d "node_modules" ]; then
+          echo "❌ Root node_modules not found. Did you run setup-node?"
+          exit 1
+        fi
+
+        if [ -z "$(find packages -type d -name node_modules)" ]; then
+          echo "❌ Nested node_modules directories not found. Did you run setup-node?"
+          exit 1
+        fi
+        echo "✅ All dependencies are installed."
+
+    - name: 📁 Verify Nx cache exists
+      shell: bash
+      run: |
+        echo "🧠 Verifying .nx and .cache/nx directories..."
+        if [ ! -d ".nx" ]; then
+          echo "❌ .nx directory missing. Did you run setup-nx?"
+          exit 1
+        fi
+
+        if [ -z "$(find packages -type d -path '*/node_modules/.cache/nx')" ]; then
+          echo "ℹ️ Skipping validation of node_modules/.cache/nx — will be created after Nx commands run."
+          exit 0
+        fi
+        echo "✅ Nx cache directories are in place."
+
+    - name: 🧪 Verify build directories exist
+      shell: bash
+      run: |
+        IFS=',' read -ra DIRS <<< "${{ inputs.build-dirs }}"
+        for DIR in "${DIRS[@]}"; do
+          if [ ! -d "$DIR" ]; then
+            echo "❌ Directory '$DIR' not found!"
+            exit 1
+          fi
+        done
+        echo "✅ Build directories found: ${{ inputs.build-dirs }}"
+
+    - name: 🧱 Run Nx Build
+      id: build-step
+      shell: bash
+      run: |
+        if [[ "${{ inputs.run-affected }}" == "true" ]]; then
+          echo "🔨 Running affected builds..."
+          pnpm nx affected --target=build --base=$NX_BASE --head=$NX_HEAD --parallel=3 ${{ inputs.cli-flags }}
+        else
+          echo "🔨 Running all builds..."
+          pnpm nx run-many --target=build --all --parallel=3 ${{ inputs.cli-flags }}
+        fi
+        echo "success=true" >> $GITHUB_OUTPUT
+
+    - name: 🧾 Generate BOM (Markdown and JSON)
+      shell: bash
+      run: |
+        mkdir -p bom
+        echo "## 🧾 Bill of Materials" > bom/bom.md
+        echo "" >> bom/bom.md
+        echo "| File | Size |" >> bom/bom.md
+        echo "|------|------|" >> bom/bom.md
+        echo "{" > bom/bom.json
+
+        IFS=',' read -ra ROOTS <<< "${{ inputs.build-dirs }}"
+        FIRST=true
+
+        for ROOT in "${ROOTS[@]}"; do
+          find "$ROOT" -type d -name dist | while read -r dist_dir; do
+            find "$dist_dir" -type f ! -path "*/node_modules/*" | while read -r file; do
+              FILE_SIZE=$(du -sh "$file" | cut -f1)
+              echo "| \`$file\` | $FILE_SIZE |" >> bom/bom.md
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                echo "," >> bom/bom.json
+              fi
+              echo "  \"${file}\": \"$FILE_SIZE\"" >> bom/bom.json
+            done
+          done
+        done
+
+        echo "" >> bom/bom.md
+        echo "Generated on $(date -u)" >> bom/bom.md
+        echo "" >> bom/bom.json
+        echo "}" >> bom/bom.json
+
+    - name: 📤 Upload BOM Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: bom
+        path: bom/
+        retention-days: 7
+
+    - name: 📤 Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: |
+          ${{ join(fromJson(format('["{0}"]', inputs.build-dirs)), ',') }}/*/dist
+        retention-days: 3
