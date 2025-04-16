@@ -114,20 +114,8 @@ jobs:
             echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-  upload:
-    name: 📤 Upload results to CodeCov
-    outputs:
-      coverage-artifact-key: ${{ steps.package-coverage.outputs.artifact-name }}
-    if: ${{ !inputs.run-affected && inputs.upload-coverage }}
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
       - name: 🔍 Verify main branch
+        if: ${{ inputs.upload-coverage == true }}
         id: verify-branch
         run: |
           CURRENT_BRANCH=$(git branch --show-current || git symbolic-ref --short HEAD || echo ${GITHUB_REF#refs/heads/})
@@ -137,10 +125,11 @@ jobs:
             echo "❌ Code coverage should only be uploaded from the main branch. Current branch: $CURRENT_BRANCH"
             exit 1
           fi
-          
+
           echo "✅ Running on main branch."
 
       - name: 🔄 Merge package coverage reports
+        if: ${{ inputs.upload-coverage == true }}
         id: merge-coverage
         run: |
           echo "🔍 Locating coverage reports in packages directory..."
@@ -173,6 +162,7 @@ jobs:
 
       # Get git info for artifact naming
       - name: 📋 Get Git info
+        if: ${{ inputs.upload-coverage == true }}
         id: git-info
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
@@ -184,6 +174,7 @@ jobs:
 
       # Package coverage for release artifacts
       - name: 📦 Package coverage reports
+        if: ${{ inputs.upload-coverage == true }}
         id: package-coverage
         run: |
           # Use commit hash and timestamp for artifact naming
@@ -239,6 +230,7 @@ jobs:
 
       # Upload to Codecov
       - name: 📤 Upload to Codecov
+        if: ${{ inputs.upload-coverage == true }}
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -250,6 +242,7 @@ jobs:
 
       # Upload coverage artifacts for releases
       - name: 📤 Upload coverage artifact for release
+        if: ${{ inputs.upload-coverage == true }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package-coverage.outputs.artifact-name }}
@@ -258,6 +251,7 @@ jobs:
 
       # Create a summary for GitHub Actions
       - name: 📊 Coverage Summary
+        if: ${{ inputs.upload-coverage == true }}
         run: |
           {
             echo "## 📊 Coverage Report Summary"
