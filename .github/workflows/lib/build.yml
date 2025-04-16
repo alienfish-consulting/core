@@ -25,6 +25,9 @@ on:
       build-summary:
         description: "Build summary"
         value: ${{ jobs.build.outputs.build-summary }}
+      build-cache-key:
+        description: "Build cache key"
+        value: ${{ jobs.build.outputs.build-cache-key }}
 
 jobs:
   build:
@@ -34,6 +37,8 @@ jobs:
       NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
     outputs:
       build-summary: ${{ steps.build-summary.outputs.build-summary }}
+      build-cache-key: ${{ steps.build-keys.outputs.build-cache-key }}
+      build-artifact-key: ${{ steps.build-keys.outputs.build-artifact-key }}
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -72,9 +77,11 @@ jobs:
           pnpm install --frozen-lockfile
           echo "✅ Dependencies installed successfully"     
 
-      - name: Create build cache key
-        id: build-cache-key
-        run: echo "build-cache-key=build-${{ inputs.cache-version }}-node-${{ inputs.node-version }}-pnpm${{ inputs.pnpm-version }}-${{ github.sha }}" >> $GITHUB_OUTPUT
+      - name: Create build cache keys
+        id: build-keys
+        run: | 
+          echo "build-cache-key=build-${{ inputs.cache-version }}-node-${{ inputs.node-version }}-pnpm${{ inputs.pnpm-version }}-${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "build-artifact-key=build-artifacts-node-${{ inputs.node-version }}-pnpm-${{ inputs.pnpm-version }}-${{ github.sha }}" >> $GITHUB_OUTPUT
 
       - name: 💾 Cache build artifacts
         uses: actions/cache@v4
@@ -83,7 +90,7 @@ jobs:
           path: |
             dist
             */*/dist
-          key: ${{ steps.build-cache-key.outputs.build-cache-key }}
+          key: ${{ steps.build-keys.outputs.build-artifact-key }}
 
       - name: 🏗️ Build affected projects
         if: steps.build-cache.outputs.cache-hit != 'true'
@@ -94,12 +101,13 @@ jobs:
 
           pnpm nx affected --target=build --head=${{ env.NX_HEAD }} --base=${{ env.NX_BASE }} --parallel=3
           echo "✅ Build completed successfully"
+          echo "build-success=true" >> $GITHUB_OUTPUT
 
       - name: 📤 Upload build artifacts
         if: steps.build-cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts-node-${{ inputs.node-version }}-pnpm-${{ inputs.pnpm-version }}-${{ github.sha }}
+          name: ${{steps.build-cache-key.outputs.build-cache-key }}
           path: |
             dist
             */*/dist

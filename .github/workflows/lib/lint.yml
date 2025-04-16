@@ -38,30 +38,27 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Important: Need full history
+          fetch-depth: 0
 
       - name: 🧮 Calculate Nx Base and Head
+        if: ${{ inputs.run-affected == true }}
         uses: nrwl/nx-set-shas@v4
         with:
           main-branch-name: 'main'
 
-      - name: 🛠️ Setup Environment
-        run: |
-          echo "::group::📦 Setup pnpm"
-          npm install -g pnpm@${{ inputs.pnpm-version }}
-          echo "::endgroup::"
-          
-          echo "::group::🟢 Setup Node.js"
-          NODE_VERSION=${{ inputs.node-version }}
-          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          nvm install $NODE_VERSION
-          nvm use $NODE_VERSION
-          echo "::endgroup::"
+      - name: 📦 Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ inputs.pnpm-version }}
 
-      # Restore dependency cache
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
+
       - name: 📚 Restore dependency cache
+        id: cache-deps
         uses: actions/cache@v4
         with:
           path: |
@@ -69,10 +66,12 @@ jobs:
             */*/node_modules
           key: ${{ inputs.pnpm-cache-key }}
 
-      # Install dependencies if cache miss
       - name: 📥 Install dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
+        run: |
+          echo "🔄 Cache miss - Installing dependencies..."
+          pnpm install --frozen-lockfile
+          echo "✅ Dependencies installed successfully"   
 
       # Run lint with the SHAs set by nx-set-shas
       - name: 🧹 Run linting

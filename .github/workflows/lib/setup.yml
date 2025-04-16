@@ -81,9 +81,6 @@ on:
       cache-hit:
         description: "Whether dependency cache was hit"
         value: ${{ jobs.setup.outputs.cache-hit }}
-      has-changesets:
-        description: "Whether there are changesets currently in the repo."
-        value: ${{ jobs.check-changesets.outputs.has_changesets }}
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing the repository'
@@ -93,30 +90,6 @@ on:
         description: 'Nx Cloud access token for distributed task execution'
 
 jobs:
-  check-changesets:
-    runs-on: ubuntu-latest
-    outputs:
-      has_changesets: ${{ steps.check.outputs.has_changesets }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Check for changesets
-        run: |
-          echo "## 🏗️ Build Results" >> $GITHUB_STEP_SUMMARY
-          if [ -d ".changeset" ]; then
-            changeset_files=$(find .changeset -name "*.md" ! -name "README.md" | wc -l)
-            if [ $changeset_files -eq 0 ]; then
-              echo "has_changesets=false" >> $GITHUB_OUTPUT
-              echo "❌No changeset files found in .changeset directory" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "has_changesets=true" >> $GITHUB_OUTPUT
-              echo "✅ Changeset files found in .changeset directory" >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "❌ .changeset directory not found"
-            exit 1
-          fi
   setup:
     name: 🛠️ Environment Setup
     runs-on: ubuntu-latest

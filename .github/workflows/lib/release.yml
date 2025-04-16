@@ -1,8 +1,40 @@
 name: 📦 Release Packages
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      pnpm-cache-key:
+        description: "The generated pnpm cache key"
+        required: true
+        type: string
+      node-version:
+        description: "Node.js version"
+        required: false
+        default: "22"
+        type: string
+      pnpm-version:
+        description: "pnpm version"
+        required: false
+        default: "10.6.4"
+        type: string
+      build-cache-key:
+        required: true
+        type: string
+      build-artifact-key:
+        required: true
+        type: string
+      coverage-artifact-key:
+        required: true
+        type: string
+    secrets:
+      NPM_TOKEN:
+        required: true
+      GITHUB_TOKEN:
+        required: true
+      NX_CLOUD_ACCESS_TOKEN:
+        required: true
+      CODECOV_TOKEN:
+        required: true
 
 permissions:
   contents: write
@@ -13,38 +45,91 @@ jobs:
   release:
     name: 🚀 Publish & Tag Updated Packages
     runs-on: ubuntu-latest
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Necessary for tag creation and changelogs
+          fetch-depth: 0
 
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: 'https://registry.npmjs.org'
-          always-auth: true
+      - name: 📦 Setup .npmrc file to publish to npm
+        uses: ./.github/workflows/lib/configure-npmrc.yml
+        secrets:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: 📦 Setup PNPM
+      - name: 📦 Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 10.6.4
+          version: ${{ inputs.pnpm-version }}
 
-      - name: 📚 Install Dependencies
-        run: pnpm install --frozen-lockfile
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'pnpm'
 
-      - name: 🛠 Version Packages (Changeset)
-        run: pnpm changeset version
+      - name: 📚 Restore dependency cache
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+          key: ${{ inputs.pnpm-cache-key }}
 
-      - name: 🚀 Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm changeset publish
+      - name: 📚 Restore build cache
+        id: cache-build
+        uses: actions/cache@v4
+        with:
+          path: |
+            dist
+            */*/dist
+          key: ${{ inputs.build-cache-key }}
 
-      - name: 🏷️ Create GitHub Releases
+
+      - name: ❌ Invalid cache keys detected
+        id: invalid-cache-hits
+        if: ${{ steps.cache-deps.outputs.cache-hit != 'true' || steps.cache-build.outputs.cache-hit != 'true' }}
+        runs: |
+          echo "❌ Invalid cache keys detected. Please ensure that the cache keys are correct."
+          echo "pnpm-cache-key: ${{ inputs.pnpm-cache-key }} | cache-hit: ${{ steps.cache-deps.outputs.cache-hit }}"
+          echo "build-cache-key: ${{ inputs.build-cache-key }} | cache-hit: ${{ steps.cache-build.outputs.cache-hit }}"
+          exit 1    
+
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
         uses: changesets/action@v1
         with:
-          publish: false
+          publish: pnpm changeset publish
+          version: pnpm changeset version
+          commit: "chore(release):"
+          title: "chore(release): version bumps"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+
+  post-release:
+    name: 📦 Post Release
+    runs-on: ubuntu-latest
+    needs: [release]
+    env:
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+    if: needs.release.outputs.published == 'true'
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update GitHub Release
+        runs: |
+          echo "Updating GitHub Release: coverage-artifact-key=${{ inputs.coverage-artifact-key }}";
+          echo "Packages published: ${{ needs.release.outputs.publishedPackages }}";
