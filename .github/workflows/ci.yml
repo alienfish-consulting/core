@@ -24,9 +24,19 @@ on:
         default: "10.6.4"
 
 jobs:
+  debug:
+    name: temp debug
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print inputs
+        run: |
+          echo "github.ref ${{github.ref}}"
+          echo "github.event_name: ${{ github.event_name }}"
+
   setup:
     name: 🧰 Setup
-    uses: ./.github/workflows/lib/setup.yml
+    needs: [debug]
+    uses: ./.github/workflows/setup.yml
     with:
       cache-version: ${{ inputs.cache-version || 'v1' }}
       node-version: ${{ inputs.node-version || '22' }}
@@ -34,18 +44,12 @@ jobs:
       sparse-checkout: false
     secrets:
       GH_TOKEN: ${{ secrets.GH_PAT }}
-
-  build-npmrc:
-    name: 📦 Build .npmrc
-    needs: setup
-    uses: ./.github/workflows/lib/configure-npmrc.yml
-    secrets:
-      inherit
+      NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
   lint:
     name: 🧹 Lint
     needs: setup
-    uses: ./.github/workflows/lib/lint.yml
+    uses: ./.github/workflows/lint.yml
     with:
       node-version: ${{ inputs.node-version || '22' }}
       pnpm-version: ${{ inputs.pnpm-version || '10.6.4' }}
@@ -56,20 +60,20 @@ jobs:
   test:
     name: 🧪 Test
     needs: setup
-    uses: ./.github/workflows/lib/test.yml
+    uses: ./.github/workflows/test.yml
     with:
       node-version: ${{ inputs.node-version || '22' }}
       pnpm-version: ${{ inputs.pnpm-version || '10.6.4' }}
       pnpm-cache-key: ${{ needs.setup.outputs.pnpm-cache-key }}
-      run-affected: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || false }}
-      upload-coverage: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || false }}
+      run-affected: ${{ github.event_name != 'pull_request' && github.ref != 'refs/heads/main' }}
+      upload-coverage: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     secrets:
       inherit
 
   build:
     name: 🏗️ Build
     needs: [setup]
-    uses: ./.github/workflows/lib/build.yml
+    uses: ./.github/workflows/build.yml
     with:
       node-version: ${{ inputs.node-version || '22' }}
       pnpm-version: ${{ inputs.pnpm-version || '10.6.4' }}
@@ -80,7 +84,7 @@ jobs:
     name: 🚀 Release
     if: ${{ github.pull_request.merged == true && github.base_ref == 'main' && startsWith(github.head_ref, 'release/') }}
     needs: [lint, test, build]
-    uses: ./.github/workflows/lib/release.yml
+    uses: ./.github/workflows/release.yml
     with:
       node-version: ${{ inputs.node-version || '22' }}
       pnpm-version: ${{ inputs.pnpm-version || '10.6.4' }}
@@ -90,7 +94,7 @@ jobs:
       coverage-artifact-key: ${{ needs.test.outputs.coverage-artifact-key }}
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
       NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 

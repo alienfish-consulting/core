@@ -38,7 +38,7 @@
 #         pnpm-version: "10.6.4"
 #         sparse-checkout: false
 #       secrets:
-#         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         GH_TOKEN: ${{ secrets.GH_PAM }}
 #
 #     your-job:
 #       needs: setup
