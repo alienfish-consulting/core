@@ -1,6 +1,6 @@
 {
   "name": "@alienfishconsulting/core-context",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Strongly typed, functional AsyncLocalStorage wrapper with context propagation for Node.js and Express apps",
   "author": {
     "name": "Terry \"Lee\" Allen, Jr",

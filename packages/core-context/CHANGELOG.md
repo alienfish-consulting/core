@@ -1,5 +1,11 @@
 # @alienfishconsulting/core-context
 
+## 1.1.0
+
+### Minor Changes
+
+- [`9625d8b`](https://github.com/alienfish-consulting/core/commit/9625d8bc5afdcb78fcceeb8f2d2efc5dc110e5ca) Thanks [@LeeAllenAF](https://github.com/LeeAllenAF)! - Removed extrenous dev dependencies from core-context
+
 ## 1.0.3
 
 ### Patch Changes
