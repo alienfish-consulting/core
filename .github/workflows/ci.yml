@@ -7,6 +7,10 @@ on:
     types: [opened, synchronize, reopened]
     branches: [main, staging, develop]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   determine-affected:
     name: 🧮 Determine Affected Projects
@@ -132,6 +136,9 @@ jobs:
       NX_TASKS_RUNNER: ${{ vars.NX_TASKS_RUNNER || 'local' }}
       NX_DISABLE_REMOTE_CACHE: ${{ vars.NX_DISABLE_REMOTE_CACHE || true }}
       NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-repo
@@ -183,7 +190,6 @@ jobs:
         with:
           tag_name: ${{ steps.release-meta.outputs.tag }}
           files: |
-            dist/**/*.*
             bom/bom.md
             bom/bom.json
           body_path: bom/bom.md
